@@ -39,6 +39,27 @@ The interface supports German and English. Choose **Deutsch** or **English** in 
 
 Die Oberfläche unterstützt Deutsch und Englisch. Die Sprache lässt sich oben im Fenster auswählen und wird in `~/.config/luna-video-studio/settings.json` gespeichert.
 
+## Blu-ray-Untertitel in MP4
+
+Blu-ray-Untertitel sind häufig PGS-Bildspuren. MP4 kann diese nicht als normale auswählbare Textspur übernehmen. Bei ausgewählter Blu-ray-PGS-Untertitelspur werden Untertitel bei MP4 weiterhin ins Videobild eingebrannt. Bei MKV bleiben PGS-Untertitel als separate auswählbare Spur erhalten. Bei AVI werden ausgewählte DVD- und Blu-ray-Untertitel direkt ins Bild eingebrannt. Sie sind dadurch mit üblichen AVI-Playern sichtbar, können aber nach dem Rippen nicht mehr abgeschaltet werden. Das gewählte Ausgabeformat wird auch beim 1-Minuten-Test verwendet. Ohne ausgewählte Untertitel wird kein Untertitel eingebrannt.
+
+## Vorschaubild und gespeicherte Einstellungen
+
+Die Checkbox **„Vorschaubild anzeigen“** öffnet ein separates Vorschaufenster mit 1024 × 768 Pixeln. Nach dem Einlesen der Disc wird darin ein Standbild aus der Mitte des ausgewählten Titels angezeigt. Das gewählte Qualitätsprofil wird bei der Erzeugung der Vorschau berücksichtigt. Bei erneutem Aktivieren der Checkbox öffnet sich das Fenster wieder.
+
+Die Einstellungen werden automatisch in `~/.config/luna-video-studio/settings.json` gespeichert: Sprache, alle Checkboxen, Zielordner, Zielformat und Qualitätsprofil.
+
+## 1-Minuten-Test
+
+1. DVD oder Blu-ray einlegen und im Bereich „Quelle auswählen“ auf **Disc einlesen** klicken.
+2. Gewünschte Ton- und Untertitelspur auswählen.
+3. Ausgabeordner und Zielformat wählen.
+4. Auf **1-Minuten-Test** klicken.
+5. Die erzeugte Datei mit dem Suffix `_TEST_1_MINUTE.mp4` prüfen.
+
+Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach einem erfolgreich erstellten 1-Minuten-Testclip ausgeworfen. Bei einem Abbruch wird sie nicht ausgeworfen.
+
+
 ## Installation: Debian-Paket
 
 Installiere LunaVideoStudio:
@@ -101,26 +122,6 @@ pipx ensurepath
 ```
 
 Danach gegebenenfalls ab- und wieder anmelden. `pgsrip` ist ein zusätzliches Werkzeug für die Untertitelverarbeitung; die normale FFmpeg-Verarbeitung und das Einbrennen ausgewählter PGS-Spuren bei MP4/AVI benötigen weiterhin FFmpeg.
-
-## Blu-ray-Untertitel in MP4
-
-Blu-ray-Untertitel sind häufig PGS-Bildspuren. MP4 kann diese nicht als normale auswählbare Textspur übernehmen. Bei ausgewählter Blu-ray-PGS-Untertitelspur werden Untertitel bei MP4 weiterhin ins Videobild eingebrannt. Bei MKV bleiben PGS-Untertitel als separate auswählbare Spur erhalten. Bei AVI werden ausgewählte DVD- und Blu-ray-Untertitel direkt ins Bild eingebrannt. Sie sind dadurch mit üblichen AVI-Playern sichtbar, können aber nach dem Rippen nicht mehr abgeschaltet werden. Das gewählte Ausgabeformat wird auch beim 1-Minuten-Test verwendet. Ohne ausgewählte Untertitel wird kein Untertitel eingebrannt.
-
-## Vorschaubild und gespeicherte Einstellungen
-
-Die Checkbox **„Vorschaubild anzeigen“** öffnet ein separates Vorschaufenster mit 1024 × 768 Pixeln. Nach dem Einlesen der Disc wird darin ein Standbild aus der Mitte des ausgewählten Titels angezeigt. Das gewählte Qualitätsprofil wird bei der Erzeugung der Vorschau berücksichtigt. Bei erneutem Aktivieren der Checkbox öffnet sich das Fenster wieder.
-
-Die Einstellungen werden automatisch in `~/.config/luna-video-studio/settings.json` gespeichert: Sprache, alle Checkboxen, Zielordner, Zielformat und Qualitätsprofil.
-
-## 1-Minuten-Test
-
-1. DVD oder Blu-ray einlegen und im Bereich „Quelle auswählen“ auf **Disc einlesen** klicken.
-2. Gewünschte Ton- und Untertitelspur auswählen.
-3. Ausgabeordner und Zielformat wählen.
-4. Auf **1-Minuten-Test** klicken.
-5. Die erzeugte Datei mit dem Suffix `_TEST_1_MINUTE.mp4` prüfen.
-
-Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach einem erfolgreich erstellten 1-Minuten-Testclip ausgeworfen. Bei einem Abbruch wird sie nicht ausgeworfen.
 
 ## Hinweise zur Fehlersuche
 
