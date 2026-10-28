@@ -1,32 +1,55 @@
-# LunaVideoStudio 1.3.85
+# LunaVideoStudio 1.3.94
 
-LunaVideoStudio ist eine GTK4-Anwendung für Debian/Linux zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP3 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
 
-![LunaVideoStudio](lunavideostudio.png)
-
-[Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
+GTK4-Anwendung für Debian/Linux zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP4 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
 
 ## Funktionen
 
-- DVD- und Blu-ray-Medien sowie Titel analysieren
-- Erkannte Audio- und Untertitelspuren anzeigen und auswählen
-- Ausgabeformate MP4, MKV und AVI
-- Qualitätsprofile und optionale Audio-Lautheitsnormalisierung (−16 LUFS)
+- Laufzeitanzeige während des Rippens und Anzeige der Gesamtdauer nach Abschluss (auch bei Abbruch/Fehler).
+
+
+
+- Optische Laufwerke erkennen und DVD-/Blu-ray-Medien einlesen
+- DVD-/Blu-ray-Titel sowie Audio- und Untertitelspuren anzeigen, soweit die Disc und installierten Werkzeuge diese Informationen bereitstellen
+- Ausgabeformate MP4, MKV und AVI auswählen
+- Qualitätsprofile für die Videoencodierung
 - 1-Minuten-Testclip aus der Filmmitte erstellen
-- Bei DVD-MP4-Ausgabe ausgewählte Untertitel über FFmpeg ins Bild einbrennen, sofern die Disc-/FFmpeg-Metadaten die Zuordnung eindeutig ermöglichen
-- Blu-ray-PGS-Untertitel bei MP4-/AVI-Ausgabe ins Bild einbrennen; bei MKV als separate Spur übernehmen
-- Laufzeit- und Fortschrittsanzeige
-- Rippen abbrechen
-- Laufwerk manuell auswerfen oder optional nach erfolgreichem Rip/Test automatisch auswerfen
-- Deutsche und englische Benutzeroberfläche
+- Ausgewählte Untertitel werden je nach Ausgabeformat passend behandelt: MP4 verwendet den bestehenden MP4-Pfad, MKV übernimmt Untertitel als auswählbare Spur und AVI brennt ausgewählte DVD- und Blu-ray-Untertitel direkt ins Videobild ein, damit sie beim Abspielen sichtbar sind; sie sind danach nicht abschaltbar.
+- Disc per Schaltfläche manuell auswerfen
+- Option zum automatischen Auswerfen nach erfolgreichem Rippen oder erfolgreichem 1-Minuten-Test direkt im Bereich „Quelle auswählen“
+
+## Optionen im Bereich „Quelle auswählen“
+
+Die Optionen **„Vorschaubild anzeigen“** und **„Audio automatisch normalisieren (−16 LUFS)“** befinden sich jetzt ebenfalls im Bereich „Quelle auswählen“. Beide Beschriftungen sind auf Deutsch und Englisch verfügbar. Ihre Zustände werden in `~/.config/luna-video-studio/settings.json` gespeichert.
+
+## Automatisches Auswerfen
+
+Im Bereich **„Quelle auswählen“** befindet sich die Checkbox **„Disc nach erfolgreichem Rippen automatisch auswerfen“**.
+
+- Standardmäßig ist die Option ausgeschaltet.
+- Wenn aktiviert, wird das optische Laufwerk nach einem erfolgreich abgeschlossenen vollständigen Rippen zum Auswerfen angewiesen.
+- Bei einem fehlgeschlagenen oder abgebrochenen Vorgang bleibt die Disc eingelegt.
+- Wenn die Option aktiviert ist, wird die Disc auch nach einem erfolgreich erstellten 1-Minuten-Testclip ausgeworfen.
+- Wenn ein VIDEO_TS-/BDMV-Ordner statt eines optischen Laufwerks als Quelle gewählt wurde, wird keine Disc ausgeworfen.
+- Zum Auswerfen wird das Systemprogramm `eject` benötigt.
+
+## Languages / Sprachen
+
+The interface supports German and English. Choose **Deutsch** or **English** in the language selector in the header; the selection is saved in `~/.config/luna-video-studio/settings.json`.
+
+Die Oberfläche unterstützt Deutsch und Englisch. Die Sprache lässt sich oben im Fenster auswählen und wird in `~/.config/luna-video-studio/settings.json` gespeichert.
 
 ## Installation: Debian-Paket
 
-```bash
-sudo apt install ./luna-video-studio_1.3.85_all.deb
 ```
 
-Start über das Anwendungsmenü oder mit:
+Installiere LunaVideoStudio:
+
+```bash
+sudo apt install ./LunaVideoStudio_1.3.94_all.deb
+```
+
+Starte die Anwendung über das Anwendungsmenü oder mit:
 
 ```bash
 luna-video-studio
@@ -34,47 +57,133 @@ luna-video-studio
 
 ## ZIP-/GitHub-Version starten
 
-Archiv entpacken und im Projektordner die benötigten Pakete installieren:
+Entpacke `LunaVideoStudio_1.3.94_GITHUB.zip`. Im Archiv liegt der Projektordner `LunaVideoStudio`. Öffne ein Terminal in diesem Ordner und installiere die Abhängigkeiten:
+
+Für die Anwendung, DVD-/Blu-ray-Analyse und das Encoding werden diese Systempakete benötigt:
+
+### Systempakete
 
 ```bash
 sudo apt update
 sudo apt install python3 python3-gi gir1.2-gtk-4.0 ffmpeg mediainfo lsdvd eject libbluray2 libaacs0 libbdplus0 libdvdnav4 libdvdread8t64
 ```
 
-Anwendung starten:
+Starte die Anwendung aus dem Projektordner:
 
 ```bash
 python3 src/luna_video_studio/main.py
 ```
 
-Alternativ den Starter verwenden:
+Optional kann der mitgelieferte Starter verwendet werden:
 
 ```bash
 chmod +x packaging/luna-video-studio
 ./packaging/luna-video-studio
 ```
-
-## Hinweise zum DVD-Minuten-Test
-
-Der DVD-Minuten-Test verwendet denselben FFmpeg-basierten Lese-, Audio- und Untertitelpfad wie der vollständige DVD-Rip. Der Test erstellt einen etwa 60 Sekunden langen Ausschnitt aus der Filmmitte. Bei MP4 und ausgewählten DVD-Untertiteln ermittelt FFprobe die verfügbaren Untertitelstreams und deren Sprachmetadaten. Kann die gewünschte Spur nicht eindeutig zugeordnet werden, kann der Vorgang mit einer Fehlermeldung abbrechen, statt stillschweigend eine andere Sprache einzubrennen.
-
-## Optionale Werkzeuge
-
-Für zusätzliche MKV-Werkzeuge kann `mkvtoolnix` installiert werden. Für OCR von Blu-ray-PGS-Bilduntertiteln kann optional `pgsrip` mit RapidOCR in einer isolierten pipx-Umgebung installiert werden:
+## Abhängigkeiten und optionale Untertitelwerkzeuge
 
 ```bash
-sudo apt install mkvtoolnix pipx
+sudo apt update
+sudo apt install pipx mkvtoolnix
+
+`mkvtoolnix` stellt unter anderem `mkvmerge` bereit und wird für zusätzliche MKV-Werkzeuge benötigt.
+
+### Blu-ray-PGS-Untertitel mit OCR
+
+Für das Auslesen/OCR von Blu-ray-PGS-Bilduntertiteln kann zusätzlich `pgsrip` mit RapidOCR in einer isolierten pipx-Umgebung installiert werden:
+
+```bash
 pipx install "pgsrip[rapidocr]"
 ```
 
-## Konfiguration
+Falls `pipx` nach der Installation meldet, dass die ausführbaren Programme nicht im Suchpfad liegen, führe aus:
 
-Die Benutzereinstellungen werden unter `~/.config/luna-video-studio/settings.json` gespeichert.
+```bash
+pipx ensurepath
+```
 
-## Projektdateien
+Danach gegebenenfalls ab- und wieder anmelden. `pgsrip` ist ein zusätzliches Werkzeug für die Untertitelverarbeitung; die normale FFmpeg-Verarbeitung und das Einbrennen ausgewählter PGS-Spuren bei MP4/AVI benötigen weiterhin FFmpeg.
+
+## Blu-ray-Untertitel in MP4
+
+Blu-ray-Untertitel sind häufig PGS-Bildspuren. MP4 kann diese nicht als normale auswählbare Textspur übernehmen. Bei ausgewählter Blu-ray-PGS-Untertitelspur werden Untertitel bei MP4 weiterhin ins Videobild eingebrannt. Bei MKV bleiben PGS-Untertitel als separate auswählbare Spur erhalten. Bei AVI werden ausgewählte DVD- und Blu-ray-Untertitel direkt ins Bild eingebrannt. Sie sind dadurch mit üblichen AVI-Playern sichtbar, können aber nach dem Rippen nicht mehr abgeschaltet werden. Das gewählte Ausgabeformat wird auch beim 1-Minuten-Test verwendet. Ohne ausgewählte Untertitel wird kein Untertitel eingebrannt.
+
+## Vorschaubild und gespeicherte Einstellungen
+
+Die Checkbox **„Vorschaubild anzeigen“** öffnet ein separates Vorschaufenster mit 1024 × 768 Pixeln. Nach dem Einlesen der Disc wird darin ein Standbild aus der Mitte des ausgewählten Titels angezeigt. Das gewählte Qualitätsprofil wird bei der Erzeugung der Vorschau berücksichtigt. Bei erneutem Aktivieren der Checkbox öffnet sich das Fenster wieder.
+
+Die Einstellungen werden automatisch in `~/.config/luna-video-studio/settings.json` gespeichert: Sprache, alle Checkboxen, Zielordner, Zielformat und Qualitätsprofil.
+
+## 1-Minuten-Test
+
+1. DVD oder Blu-ray einlegen und im Bereich „Quelle auswählen“ auf **Disc einlesen** klicken.
+2. Gewünschte Ton- und Untertitelspur auswählen.
+3. Ausgabeordner und Zielformat wählen.
+4. Auf **1-Minuten-Test** klicken.
+5. Die erzeugte Datei mit dem Suffix `_TEST_1_MINUTE.mp4` prüfen.
+
+Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach einem erfolgreich erstellten 1-Minuten-Testclip ausgeworfen. Bei einem Abbruch wird sie nicht ausgeworfen.
+
+## Hinweise zur Fehlersuche
+
+- Prüfe, ob im Untertitel-Dropdown tatsächlich eine Sprache und nicht „Aus – keine Untertitel“ ausgewählt ist.
+- Bei Fehlern notiere den letzten Fehlertext aus dem Statusbereich.
+- Verschlüsselte Discs können eine passende, rechtmäßig verfügbare AACS-Konfiguration voraussetzen.
+- Die Anwendung wurde in dieser Arbeitsumgebung nicht an einem physischen DVD-/Blu-ray-Laufwerk getestet. Bitte die neue Auswurffunktion zunächst mit einer entbehrlichen Disc testen.
+
+## Projektstruktur
 
 - `src/luna_video_studio/main.py` – Anwendung
-- `packaging/` – Debian-Metadaten, Starter und Desktop-Datei
+- `packaging/` – Debian-Paket-Metadaten, Starter und Desktop-Datei
 - `CHANGELOG.md` – Versionsänderungen
+
+
+## Hintergrund: DVD-Titelauswahl
+
+
+## Änderungen in 1.3.74
+
+- Sichtbare Sprachauswahl „Deutsch / English“ oben rechts ergänzt. Die Auswahl wird gespeichert. Beim Sprachwechsel bleiben die tatsächlich erkannten Audio- und Untertitelspuren erhalten.
+- DVD-Analyse behandelt ungültige/nicht-UTF-8-Bytes in Werkzeugausgaben tolerant, statt beim Einlesen mit `UnicodeDecodeError` abzubrechen. Das betrifft besonders DVD-Namen und Metadaten; andere DVDs behalten den bisherigen Analysepfad.
+## Version 1.3.36
+
+- Fortschrittsanzeige aktualisiert sich während des FFmpeg-Encoding anhand der verarbeiteten Laufzeit.
+- FFmpeg-Statusausgabe wird separat gelesen, damit die Anwendung während des Encodings nicht auf das Ende warten muss.
+- DVD-Titel werden weiterhin über den ausgewählten `dvdvideo`-Titelparameter verarbeitet; bitte nach dem Update kontrollieren, dass nur der gewünschte Haupttitel ausgegeben wird.
+
+
+## Titelauswahl (1.3.36)
+Nach dem Einlesen wird zunächst der längste erkannte Titel vorgeschlagen. Du kannst in der Titelliste den gewünschten Film anklicken. Nur der ausgewählte Titel wird für den vollständigen Rip und den 1-Minuten-Test verwendet; Ton- und Untertitelspuren werden passend zum Titel angezeigt.
+
+
+### Blu-ray-Untertitel in 1.3.59
+
+Die Zuordnung von Blu-ray-Sprachmetadaten erfolgt über die Stream-PID, und die ausgewählte PGS-Spur wird im FFmpeg-Filter über ihren globalen Streamindex angesprochen. Bitte den Ein-Minuten-Test mit der eigenen Disc durchführen; eine erfolgreiche Hardware-/Disc-Prüfung ist nicht Bestandteil des Quellpakets.
+
+
+
+
+## Änderungen in 1.3.79
+
+- Der Blu-ray-Pfad und die Auswahl des Blu-ray-Streams wurden nicht gezielt verändert.
+- README mit dem neuen Versionsstand und der getrennten DVD-Verarbeitung aktualisiert.
+
+
+## Version 1.3.88
+
+- MPlayer vollständig aus dem aktiven Quellcode entfernt; DVD-Minuten-Test und vollständiger Rip nutzen FFmpeg.
+- Option „Vorschaubild anzeigen“ ergänzt; das Vorschaubild wird für den ausgewählten Titel aus der Filmmitte erzeugt und berücksichtigt das gewählte Qualitätsprofil für die Bildvorschau.
+- Einstellungen werden in `~/.config/luna-video-studio/settings.json` gespeichert: Sprache, alle Checkboxen, Ausgabeordner, Zielformat und Qualitätsprofil.
+- Fenstergröße um ungefähr 5 cm in der Breite und 3 cm in der Höhe reduziert.
+
+
+### Version 1.3.90
+- Der Hinweis zur Vorschau wird direkt unter der Checkbox im Bereich „Quelle auswählen“ angezeigt. Dadurch entsteht keine leere Zeile mehr im Bereich „Ausgabe einstellen“.
+- Englische Beschriftungen der Vorschau- und Audio-Normalisierungsoption bleiben enthalten.
+
+
+## Zielordner pro Disc
+
+Der eingestellte Zielordner ist der Basisordner (zum Beispiel `~/Videos`). Nach erfolgreichem Einlesen wird im Feld automatisch ein Unterordner mit dem erkannten Disc-/Filmnamen angezeigt, zum Beispiel `~/Videos/COLLATERAL_BEAUTY`. In `~/.config/luna-video-studio/settings.json` bleibt nur der Basisordner gespeichert. Beim Einlesen der nächsten Disc wird der neue Titelordner relativ zum gleichen Basisordner angezeigt.
 
 73 de DO2QG Andreas

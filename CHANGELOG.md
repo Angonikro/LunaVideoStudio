@@ -1,8 +1,43 @@
-## 1.3.85
-- MPlayer-Verarbeitungspfad, Untertitel-Probe-Funktion und MPlayer-Fortschrittsfunktionen vollständig aus dem Anwendungscode entfernt.
-- DVD-Minuten-Test und vollständiger Rip verwenden ausschließlich den bestehenden FFmpeg-Verarbeitungspfad.
-- README und ZIP-Installationsanleitung bereinigt; MPlayer ist keine Abhängigkeit.
-- Untertitelauflösung über FFprobe/FFmpeg und Blu-ray-Verarbeitung nicht gezielt geändert.
+# Changelog
+
+## 1.3.94
+- AVI: ausgewählte DVD- und Blu-ray-Untertitel werden direkt ins Videobild eingebrannt, statt als problematische XSUB-Spur eingebettet zu werden.
+- MP4- und MKV-Untertitelverarbeitung bleibt unverändert.
+- Programmversion, README und Debian-Paket auf 1.3.94 aktualisiert.
+
+## 1.3.93
+- AVI: XSUB-Codec und AVI-Streamkennung DXSB werden explizit gesetzt; ausgewählte Untertitelsprache wird als Stream-Metadatum mitgegeben. MP4- und MKV-Verarbeitung bleiben unverändert.
+
+## 1.3.92
+- MKV: ausgewählte DVD-/Blu-ray-Untertitel werden als eingebettete, auswählbare Untertitelspur übernommen.
+- AVI: ausgewählte Untertitel werden als eingebettete XSUB-Spur ausgegeben, statt bei Blu-ray standardmäßig ins Bild eingebrannt zu werden.
+- MP4-Verarbeitung bleibt unverändert.
+
+## 1.3.91
+- Zielordner wird als Basisordner gespeichert; nach Disc-Analyse wird der erkannte Disc-/Filmname als Unterordner ergänzt. So wird der Titel nicht dauerhaft in die gespeicherte Grundeinstellung übernommen.
+
+## 1.3.90
+- Vorschauhinweis in den Bereich „Quelle auswählen“ verschoben, damit unter „Ausgabe einstellen“ keine leere Zeile entsteht.
+- Englische Beschriftungen für Preview und Audio-Normalisierung beibehalten.
+
+## 1.3.89
+- Checkbox „Vorschaubild anzeigen“ und „Audio automatisch normalisieren“ in den Bereich „Quelle auswählen“ verschoben.
+- Englische Übersetzungen der beiden Optionen bleiben verfügbar.
+
+## 1.3.88
+- Hauptfenster wird nach dem Einlesen kompakter; die Titelliste bleibt scrollbar.
+- Lange Playlist-Details werden begrenzt, damit sie die Fensterbreite nicht unnötig vergrößern.
+
+## 1.3.87
+- Aktivieren von „Vorschaubild anzeigen“ öffnet ein separates Vorschaufenster mit 1024 × 768 Pixeln.
+- Das Standbild wird nach dem Einlesen aus der Mitte des ausgewählten Titels geladen; Qualitätsprofiländerungen aktualisieren die Vorschau.
+- Beim Deaktivieren der Checkbox wird das Vorschaufenster ausgeblendet.
+
+## 1.3.86
+- MPlayer-Verarbeitung, MPlayer-Hilfsfunktionen und MPlayer-Fortschrittsanzeigen aus dem Quellcode entfernt.
+- Checkbox für Vorschaubild in Abhängigkeit vom gewählten Qualitätsprofil ergänzt.
+- Checkbox-Zustände, Ausgabeordner, Format, Qualitätsprofil und Sprache werden dauerhaft gespeichert.
+- Fenstergröße verkleinert.
 
 ## 1.3.84
 - 1-Minuten-Test verwendet FFmpeg direkt wie der vollständige DVD-Rip.

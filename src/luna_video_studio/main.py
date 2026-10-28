@@ -13,9 +13,9 @@ from pathlib import Path
 
 import gi
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Gio, GLib
+from gi.repository import Gtk, Gio, GLib, Gdk
 
-APP_VERSION = "1.3.85"
+APP_VERSION = "1.3.94"
 
 def normalize_language_code(value):
     """Normalize DVD language labels/codes to ISO-639-2 codes when possible."""
@@ -219,6 +219,7 @@ TRANSLATIONS = {
     '2  ·  Ausgabe einstellen': '2  ·  Configure output',
     'Zielformat': 'Output format',
     'Qualitätsprofil': 'Quality profile',
+    'Vorschaubild anzeigen': 'Show preview image',
     'Hohe Qualität': 'High quality',
     'Ausgewogen': 'Balanced',
     'Kleine Datei': 'Small file',
@@ -291,6 +292,9 @@ class LunaVideoStudio(Gtk.Application):
     def __init__(self):
         super().__init__(application_id='de.goldisoft.lunavideostudio', flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.window = None
+        self.preview_window = None
+        self.preview_window_picture = None
+        self.preview_window_status = None
         self.language = 'de'
         self.settings_path = Path.home() / '.config' / 'luna-video-studio' / 'settings.json'
         try:
@@ -301,6 +305,8 @@ class LunaVideoStudio(Gtk.Application):
             self.language = 'de'
         self._original_widget_text = {}
         self.source_path = None
+        self.output_base_folder = str(Path.home() / 'Videos')
+        self._updating_disc_output = False
         self.track_rows = []
         self.analysis_source = None
         self.rip_thread = None
@@ -319,8 +325,8 @@ class LunaVideoStudio(Gtk.Application):
         provider.load_from_data(CSS)
         Gtk.StyleContext.add_provider_for_display(self.get_active_window().get_display() if self.get_active_window() else GdkDisplay.get_default(), provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.window = Gtk.ApplicationWindow(application=self, title='Luna-Video-Studio')
-        self.window.set_default_size(940, 660)
-        self.window.set_size_request(720, 520)
+        self.window.set_default_size(750, 547)
+        self.window.set_size_request(620, 450)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.window.set_child(root)
@@ -385,9 +391,21 @@ class LunaVideoStudio(Gtk.Application):
         output_box.append(self.label('Qualitätsprofil'))
         self.quality_dropdown = Gtk.DropDown.new_from_strings(['Hohe Qualität', 'Ausgewogen', 'Kleine Datei', 'Originalauflösung'])
         output_box.append(self.quality_dropdown)
+        self.preview_check = Gtk.CheckButton(label='Vorschaubild anzeigen')
+        self.preview_check.set_active(False)
+        source_box.append(self.preview_check)
+        # The preview itself is shown in a dedicated 1024x768 window.
+        self.preview_picture = Gtk.Picture()
+        self.preview_picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.preview_picture.set_can_shrink(True)
+        self.preview_picture.set_visible(False)
+        self.preview_hint = Gtk.Label(label='Vorschau erscheint nach dem Einlesen der Disc.', xalign=0, wrap=True)
+        self.preview_hint.add_css_class('dim')
+        self.preview_hint.set_visible(False)
+        source_box.append(self.preview_hint)
         self.normalize_audio_check = Gtk.CheckButton(label='Audio automatisch normalisieren (−16 LUFS)')
         self.normalize_audio_check.set_active(True)
-        output_box.append(self.normalize_audio_check)
+        source_box.append(self.normalize_audio_check)
         output_box.append(self.label('Zielordner'))
         self.output_entry = Gtk.Entry()
         self.output_entry.set_text(str(Path.home() / 'Videos'))
@@ -425,8 +443,8 @@ class LunaVideoStudio(Gtk.Application):
         self.track_list.set_visible(False)
         self.track_scroll = Gtk.ScrolledWindow()
         self.track_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        self.track_scroll.set_min_content_height(110)
-        self.track_scroll.set_max_content_height(210)
+        self.track_scroll.set_min_content_height(75)
+        self.track_scroll.set_max_content_height(125)
         self.track_scroll.set_child(self.track_list)
         self.track_scroll.set_visible(False)
         tracks_panel.append(self.track_scroll)
@@ -453,16 +471,221 @@ class LunaVideoStudio(Gtk.Application):
         footer = Gtk.Label(label='DVD-/Blu-ray-Analyse und FFmpeg-Video-Encoding. 1-Minuten-Testclip aus der Filmmitte möglich.', xalign=0, wrap=True)
         footer.set_margin_start(20); footer.set_margin_end(20); footer.set_margin_bottom(12); footer.add_css_class('dim')
         root.append(footer)
+        self._restore_settings()
+        self.auto_eject_check.connect('toggled', self._settings_changed)
+        self.normalize_audio_check.connect('toggled', self._settings_changed)
+        self.preview_check.connect('toggled', self._preview_toggled)
+        self.format_dropdown.connect('notify::selected', self._settings_changed)
+        self.quality_dropdown.connect('notify::selected', self._quality_changed)
+        self.output_entry.connect('changed', self._output_folder_changed)
         self.window.present()
         self._apply_language()
+        if self.preview_check.get_active():
+            self._ensure_preview_window()
+            self.preview_window.present()
+            self._request_preview()
+
+    def _restore_settings(self):
+        """Restore persisted UI preferences, including every checkbox and output folder."""
+        try:
+            data = json.loads(self.settings_path.read_text(encoding='utf-8'))
+        except (OSError, ValueError, TypeError):
+            data = {}
+        self._loading_settings = True
+        try:
+            self.language = data.get('language', self.language) if data.get('language', self.language) in ('de', 'en') else 'de'
+            self.language_dropdown.set_selected(1 if self.language == 'en' else 0)
+            self.auto_eject_check.set_active(bool(data.get('auto_eject', False)))
+            self.normalize_audio_check.set_active(bool(data.get('normalize_audio', True)))
+            self.preview_check.set_active(bool(data.get('show_preview', False)))
+            folder = data.get('output_folder')
+            if isinstance(folder, str) and folder.strip():
+                self.output_base_folder = os.path.expanduser(folder.strip())
+            else:
+                self.output_base_folder = str(Path.home() / 'Videos')
+            self._updating_disc_output = True
+            self.output_entry.set_text(self.output_base_folder)
+            self._updating_disc_output = False
+            fmt = data.get('format_index', 0)
+            quality = data.get('quality_index', 0)
+            self.format_dropdown.set_selected(fmt if isinstance(fmt, int) and 0 <= fmt < 3 else 0)
+            self.quality_dropdown.set_selected(quality if isinstance(quality, int) and 0 <= quality < 4 else 0)
+        finally:
+            self._loading_settings = False
+        self._update_preview_visibility()
+
+    def _save_settings(self):
+        if getattr(self, '_loading_settings', False):
+            return
+        try:
+            data = {
+                'language': self.language,
+                'auto_eject': bool(self.auto_eject_check.get_active()),
+                'normalize_audio': bool(self.normalize_audio_check.get_active()),
+                'show_preview': bool(self.preview_check.get_active()),
+                'output_folder': self.output_base_folder.strip(),
+                'format_index': int(self.format_dropdown.get_selected()),
+                'quality_index': int(self.quality_dropdown.get_selected()),
+            }
+            self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+            self.settings_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+        except (OSError, AttributeError, TypeError, ValueError):
+            pass
+
+    def _settings_changed(self, *_args):
+        self._save_settings()
+
+    def _output_folder_changed(self, *_args):
+        # The entry displays base/film-title after disc analysis, but settings
+        # must retain only the base folder so the next disc gets its own folder.
+        if not getattr(self, '_updating_disc_output', False):
+            self.output_base_folder = os.path.expanduser(self.output_entry.get_text().strip() or str(Path.home() / 'Videos'))
+        self._save_settings()
+
+    def _quality_changed(self, *_args):
+        self._save_settings()
+        if self.preview_check.get_active():
+            self._request_preview()
+
+    def _preview_toggled(self, *_args):
+        self._save_settings()
+        self._update_preview_visibility()
+        if self.preview_check.get_active():
+            self._ensure_preview_window()
+            self.preview_window.present()
+            self._request_preview()
+        elif self.preview_window is not None:
+            self.preview_window.set_visible(False)
+
+    def _update_preview_visibility(self):
+        enabled = bool(getattr(self, 'preview_check', None) and self.preview_check.get_active())
+        if hasattr(self, 'preview_picture'):
+            self.preview_picture.set_visible(False)
+            self.preview_hint.set_visible(enabled)
+            if enabled and not self.track_rows:
+                self.preview_hint.set_text('Vorschau erscheint nach dem Einlesen der Disc.')
+        if not enabled and getattr(self, 'preview_window', None) is not None:
+            self.preview_window.set_visible(False)
+
+    def _ensure_preview_window(self):
+        if self.preview_window is not None:
+            return
+        self.preview_window = Gtk.Window(title='LunaVideoStudio – Vorschaubild')
+        self.preview_window.set_default_size(1024, 768)
+        self.preview_window.set_size_request(640, 480)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        box.set_margin_top(12)
+        box.set_margin_bottom(12)
+        box.set_margin_start(12)
+        box.set_margin_end(12)
+        self.preview_window_status = Gtk.Label(label='Bitte zuerst eine Disc einlesen.', xalign=0)
+        self.preview_window_status.add_css_class('dim')
+        box.append(self.preview_window_status)
+        self.preview_window_picture = Gtk.Picture()
+        self.preview_window_picture.set_content_fit(Gtk.ContentFit.CONTAIN)
+        self.preview_window_picture.set_can_shrink(True)
+        self.preview_window_picture.set_hexpand(True)
+        self.preview_window_picture.set_vexpand(True)
+        box.append(self.preview_window_picture)
+        self.preview_window.set_child(box)
+        self.preview_window.set_transient_for(self.window)
+        self.preview_window.connect('close-request', self._preview_window_close_request)
+
+    def _preview_window_close_request(self, *_args):
+        # Closing the preview window does not disable the saved checkbox.
+        if self.preview_window is not None:
+            self.preview_window.set_visible(False)
+        return True
+
+    def _request_preview(self):
+        if not self.preview_check.get_active():
+            return
+        row = self.track_list.get_selected_row() if hasattr(self, 'track_list') else None
+        if not self.track_rows:
+            self.preview_hint.set_text('Bitte zuerst die Disc einlesen.')
+            return
+        index = row.get_index() if row is not None else 0
+        index = max(0, min(index, len(self.track_rows) - 1))
+        track = self.track_rows[index]
+        source = track.get('input_path') or self.analysis_source or self.source_path
+        if not source or not shutil_which('ffmpeg'):
+            self.preview_hint.set_text('Vorschau nicht verfügbar: Quelle oder FFmpeg fehlt.')
+            return
+        # Use the selected quality profile to choose thumbnail fidelity. The still
+        # is generated from the middle of the selected title without changing rip settings.
+        cache_dir = Path.home() / '.cache' / 'luna-video-studio' / 'preview'
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            self.preview_hint.set_text('Vorschaubild konnte nicht gespeichert werden.')
+            return
+        preview_file = cache_dir / 'current_preview.jpg'
+        duration = float(track.get('duration_seconds') or 0)
+        seek = max(0, int(duration / 2))
+        quality = self.quality_dropdown.get_selected()
+        qscale = {0: 2, 1: 4, 2: 8, 3: 2}.get(quality, 4)
+        preview_scale = {0: 'scale=640:-2', 1: 'scale=480:-2', 2: 'scale=320:-2'}.get(quality)
+        cmd = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y']
+        if track.get('dvd_title') and not str(source).startswith('bluray:') and not track.get('details', '').startswith('Blu-ray'):
+            cmd += ['-f', 'dvdvideo', '-title', str(track.get('dvd_title', 1))]
+        if str(source).startswith('bluray:') or track.get('details', '').startswith('Blu-ray'):
+            input_arg = source if str(source).startswith('bluray:') else 'bluray:' + str(source)
+            if track.get('bluray_playlist'):
+                cmd += ['-playlist', str(track['bluray_playlist'])]
+        else:
+            input_arg = source
+        cmd += ['-ss', str(seek), '-i', input_arg, '-frames:v', '1']
+        if preview_scale:
+            cmd += ['-vf', preview_scale]
+        cmd += ['-q:v', str(qscale), str(preview_file)]
+        self.preview_hint.set_text('Vorschaubild wird erstellt …')
+        self._ensure_preview_window()
+        if self.preview_window_status is not None:
+            self.preview_window_status.set_text('Vorschaubild wird erstellt …')
+        self._preview_request_id = getattr(self, '_preview_request_id', 0) + 1
+        request_id = self._preview_request_id
+        def worker():
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=45, check=False)
+                ok = result.returncode == 0 and preview_file.exists() and preview_file.stat().st_size > 1000
+                error = (result.stderr or '').strip().splitlines()
+                message = error[-1] if error else 'Kein Bild aus der Quelle erhalten.'
+            except (OSError, subprocess.SubprocessError) as exc:
+                ok, message = False, str(exc)
+            GLib.idle_add(self._show_preview, request_id, str(preview_file), ok, message)
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_preview(self, request_id, filename, ok, message):
+        if request_id != getattr(self, '_preview_request_id', 0) or not self.preview_check.get_active():
+            return GLib.SOURCE_REMOVE
+        if ok:
+            try:
+                texture = Gdk.Texture.new_from_filename(filename)
+                self.preview_picture.set_paintable(texture)
+                self._ensure_preview_window()
+                self.preview_window_picture.set_paintable(texture)
+                quality_label = ['Hohe Qualität', 'Ausgewogen', 'Kleine Datei', 'Originalauflösung'][self.quality_dropdown.get_selected()]
+                self.preview_hint.set_text('Vorschaubild · Qualitätsprofil: ' + quality_label)
+                self.preview_window_status.set_text('Vorschaubild · Qualitätsprofil: ' + quality_label)
+                if self.preview_check.get_active():
+                    self.preview_window.present()
+            except Exception as exc:
+                error_text = f'Vorschaubild konnte nicht angezeigt werden: {exc}'
+                self.preview_hint.set_text(error_text)
+                if self.preview_window_status is not None:
+                    self.preview_window_status.set_text(error_text)
+        else:
+            error_text = 'Vorschaubild nicht verfügbar: ' + message[:140]
+            self.preview_hint.set_text(error_text)
+            if self.preview_window_status is not None:
+                self.preview_window_status.set_text(error_text)
+        return GLib.SOURCE_REMOVE
 
     def _language_changed(self, dropdown, _pspec):
+        if getattr(self, '_loading_settings', False):
+            return
         self.language = 'en' if dropdown.get_selected() == 1 else 'de'
-        try:
-            self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-            self.settings_path.write_text(json.dumps({'language': self.language}, ensure_ascii=False, indent=2))
-        except Exception:
-            pass
+        self._save_settings()
         self._rebuild_for_language()
 
     def _rebuild_for_language(self):
@@ -485,6 +708,7 @@ class LunaVideoStudio(Gtk.Application):
             'output_folder': self.output_entry.get_text(),
             'auto_eject': self.auto_eject_check.get_active(),
             'normalize': self.normalize_audio_check.get_active(),
+            'preview': self.preview_check.get_active(),
             'format': dropdown_state(self.format_dropdown),
             'quality': dropdown_state(self.quality_dropdown),
             'drive': dropdown_state(self.drive_dropdown),
@@ -512,6 +736,7 @@ class LunaVideoStudio(Gtk.Application):
         self.output_entry.set_text(snapshot['output_folder'])
         self.auto_eject_check.set_active(snapshot['auto_eject'])
         self.normalize_audio_check.set_active(snapshot['normalize'])
+        self.preview_check.set_active(snapshot.get('preview', False))
         for name in ('format', 'quality', 'drive', 'audio', 'subtitles'):
             dropdown = getattr(self, {'format':'format_dropdown','quality':'quality_dropdown','drive':'drive_dropdown','audio':'audio_dropdown','subtitles':'subtitle_dropdown'}[name])
             values, selected = snapshot[name]
@@ -750,12 +975,12 @@ class LunaVideoStudio(Gtk.Application):
                                 if not language or language.lower() in ('xx', 'und', 'unknown'):
                                     language = 'Sprache unbekannt'
                                 codec = (sub.findtext('format') or 'DVD-Untertitel').strip()
-                                # Keep the DVD SPU stream ID for display and diagnostics.
-                                # FFmpeg's actual stream index is resolved separately via ffprobe.
+                                # Keep the DVD SPU stream ID as metadata. FFmpeg's stream index is
+                                # resolved separately from its own language metadata.
                                 ordinal_text = (sub.findtext('ix') or '').strip()
-                                display_id = stream_id or ordinal_text or str(len(subtitle_choices))
+                                display_id = stream_id or ordinal_text or str(len(subtitle_choices) + 1)
                                 label = f'{language} · {codec} (Spur {display_id})'
-                                subtitle_choices.append({'label': label, 'index': display_id, 'has_spu_id': bool(stream_id and re.fullmatch(r'0x(?:2[0-9a-fA-F]|3[0-9a-fA-F])', stream_id)), 'language': language, 'codec': codec})
+                                subtitle_choices.append({'label': label, 'index': display_id, 'language': language, 'codec': codec})
                             audio_count = len(title.findall('./audio'))
                             if seconds > 1:
                                 detail = f'{chapters} Kapitel · DVD'
@@ -805,8 +1030,7 @@ class LunaVideoStudio(Gtk.Application):
                         language = language or 'Sprache unbekannt'
                         stream_id = stream_id or f'Spur {sub_number}'
                         label = f'{language} · DVD-Untertitel (Spur {stream_id})'
-                        has_spu_id = bool(stream_id and re.fullmatch(r'0x(?:2[0-9a-fA-F]|3[0-9a-fA-F])', stream_id))
-                        subs.append({'label': label, 'index': stream_id, 'has_spu_id': has_spu_id, 'language': language, 'codec': 'DVD-Untertitel'})
+                        subs.append({'label': label, 'index': stream_id, 'language': language, 'codec': 'DVD-Untertitel'})
                     text_titles[number] = (length, chapters, subs, audios)
                 if not parsed:
                     for number, (length, chapters, subs, audios) in text_titles.items():
@@ -824,13 +1048,15 @@ class LunaVideoStudio(Gtk.Application):
                     for number, (length, chapters, subs, audios) in text_titles.items():
                         target = by_number.get(number)
                         if target and (subs or audios):
-                            # Prefer XML subtitle entries when they include reliable
-                            # per-title DVD SPU stream IDs; otherwise use text metadata.
+                            # Keep XML subtitle entries when they contain per-title
+                            # <ix> ordinals. The human-readable lsdvd output exposes
+                            # Keep XML-provided DVD SPU stream IDs where available;
+                            # FFmpeg's own stream metadata determines the selected track.
                             xml_subs = target.get('subtitles') or []
-                            xml_has_spu_ids = bool(xml_subs) and all(
-                                item.get('has_spu_id', False) for item in xml_subs
+                            xml_has_ordinals = bool(xml_subs) and all(
+                                isinstance(item.get('sid'), int) for item in xml_subs
                             )
-                            if subs and not xml_has_spu_ids:
+                            if subs and not xml_has_ordinals:
                                 target['subtitles'] = subs
                             if audios:
                                 target['audio'] = audios
@@ -981,7 +1207,7 @@ class LunaVideoStudio(Gtk.Application):
                 line.set_margin_top(5); line.set_margin_bottom(5); line.set_margin_start(6); line.set_margin_end(6)
                 name = Gtk.Label(label=item['title'], xalign=0); name.set_hexpand(True)
                 duration = Gtk.Label(label=item['duration'], xalign=1)
-                details = Gtk.Label(label=item['details'], xalign=1); details.add_css_class('dim')
+                details = Gtk.Label(label=item['details'], xalign=1); details.add_css_class('dim'); details.set_max_width_chars(34); details.set_width_chars(18); details.set_wrap(False)
                 line.append(name); line.append(duration); line.append(details); row.set_child(line); self.track_list.append(row)
             self.track_list.set_visible(True)
             self.track_scroll.set_visible(True)
@@ -1000,17 +1226,37 @@ class LunaVideoStudio(Gtk.Application):
             self.track_list.set_visible(False)
             self.track_scroll.set_visible(False)
         self.status_label.set_text(message)
-        # Suggest a film-named output folder after successful disc analysis.
-        # Only change the default Videos target; preserve a path the user chose.
+        # Keep the main window compact after analysis; the title list stays scrollable.
+        GLib.idle_add(self._compact_main_window)
+        # Show a per-disc subfolder, but keep the user's base output folder
+        # separate and persist only that base path in settings.json.
         if tracks:
             disc_name = self._detect_disc_name(self.analysis_source, tracks)
-            current_output = os.path.normpath(os.path.expanduser(self.output_entry.get_text().strip() or str(Path.home() / 'Videos')))
-            default_output = os.path.normpath(str(Path.home() / 'Videos'))
-            if disc_name and current_output in (default_output, os.path.normpath(str(Path.home() / 'Videos' / disc_name))):
-                self.output_entry.set_text(str(Path.home() / 'Videos' / disc_name))
+            base_folder = os.path.expanduser((self.output_base_folder or str(Path.home() / 'Videos')).strip())
+            if disc_name:
+                self._updating_disc_output = True
+                self.output_entry.set_text(str(Path(base_folder) / disc_name))
+                self._updating_disc_output = False
+            else:
+                self._updating_disc_output = True
+                self.output_entry.set_text(base_folder)
+                self._updating_disc_output = False
         self.progress.set_fraction(1.0 if tracks else 0.0)
         self.progress.set_text('Analyse abgeschlossen' if tracks else 'Analyse fehlgeschlagen')
         self.start_btn.set_sensitive(True)
+        return GLib.SOURCE_REMOVE
+
+    def _compact_main_window(self):
+        if self.window is not None:
+            # GTK4 may retain the initial natural size after a long playlist appears.
+            self.window.set_default_size(750, 560)
+            self.window.set_size_request(620, 450)
+            self.window.set_resizable(True)
+            self.window.set_maximized(False)
+            self.window.set_visible(True)
+            self.window.present()
+            self.window.set_default_size(750, 560)
+            self.window.queue_resize()
         return GLib.SOURCE_REMOVE
 
     def _detect_disc_name(self, source, tracks):
@@ -1074,6 +1320,8 @@ class LunaVideoStudio(Gtk.Application):
         if 0 <= index < len(self.track_rows):
             self._populate_stream_choices(self.track_rows[index])
             self.status_label.set_text(f"Ausgewählt: {self.track_rows[index]['title']} · {self.track_rows[index]['duration']}. Beim Rippen wird nur dieser Titel verwendet.")
+            if getattr(self, 'preview_check', None) and self.preview_check.get_active():
+                self._request_preview()
 
     def choose_folder(self, *_):
         dialog = Gtk.FileDialog.new()
@@ -1096,7 +1344,11 @@ class LunaVideoStudio(Gtk.Application):
     def output_selected(self, dialog, result):
         try:
             f = dialog.select_folder_finish(result)
-            self.output_entry.set_text(f.get_path())
+            self.output_base_folder = f.get_path()
+            self._updating_disc_output = True
+            self.output_entry.set_text(self.output_base_folder)
+            self._updating_disc_output = False
+            self._save_settings()
         except Exception:
             pass
 
@@ -1142,7 +1394,7 @@ class LunaVideoStudio(Gtk.Application):
 
     def start_test_rip(self, *_):
         # Use the same FFmpeg DVD/Blu-ray demuxing, stream mapping, and subtitle
-        # handling as the full rip.
+        # handling as the full rip. No intermediate raw-video or audio files.
         self._launch_encoding(test_clip=True, test_pipeline=False)
 
     def _launch_encoding(self, test_clip=False, test_pipeline=False):
@@ -1193,7 +1445,7 @@ class LunaVideoStudio(Gtk.Application):
         # The lsdvd stream ID (0x20, 0x21, ...) is not consistently preserved as
         # the FFmpeg dvdvideo stream ID, which can burn a different language.
         if (track.get('dvd_title') and not is_bluray_source and subtitle_item
-                and fmt == 'mp4'):
+                and fmt in ('mp4', 'mkv', 'avi')):
             try:
                 ff_subs = probe_ffmpeg_dvd_subtitle_streams(source, track['dvd_title'])
                 wanted_language = normalize_language_code(subtitle_item.get('language', ''))
@@ -1216,9 +1468,7 @@ class LunaVideoStudio(Gtk.Application):
                 self.status_label.set_text(f'DVD-Untertitel konnten nicht sicher zugeordnet werden: {exc}')
                 return
         # Blu-ray input is an FFmpeg bluray: URL. For a full DVD rip, explicitly
-        # select FFmpeg's dvdvideo demuxer before passing its title option. Without
-        # '-f dvdvideo', FFmpeg treats '-title' as an unknown generic option and
-        # fails with "Option not found"; DVD processing stays on FFmpeg.
+        # select FFmpeg's dvdvideo demuxer before passing its title option.
         # The test clip follows the terminal command pattern confirmed on the
         # user's Raspberry Pi, but honors the selected audio language. Use the
         # audio-relative stream index (0:a:N), not ffprobe's global stream ID,
@@ -1258,7 +1508,7 @@ class LunaVideoStudio(Gtk.Application):
         # demuxer exposes them, burn the selected subtitle stream directly into
         # the video frames instead of trying to mux DVD-SPU into MP4 as mov_text.
         dvd_selected_subtitle = bool(track.get('dvd_title') and not is_bluray_source and subtitle_item)
-        burn_dvd_subtitle = bool(dvd_selected_subtitle and fmt == 'mp4')
+        burn_dvd_subtitle = bool(dvd_selected_subtitle and fmt in ('mp4', 'avi'))
         dvd_subtitle_relative_index = max(0, sub_pos - 1)
         if test_pipeline:
             audio_map = f'0:a:{audio_pos}?' if audio_item else '0:a:0?'
@@ -1326,7 +1576,12 @@ class LunaVideoStudio(Gtk.Application):
                     cmd += ['-map', '0:a:0?']
             if not burn_bluray_subtitle and not burn_dvd_subtitle and subtitle_item and not bluray_selected_subtitle:
                 try:
-                    cmd += ['-map', f"0:{int(subtitle_item['index'])}"]
+                    # For DVDs use FFmpeg's probed global stream index; lsdvd IDs
+                    # such as 0x20 are not FFmpeg stream indexes. For Blu-ray the
+                    # selected stream was mapped above.
+                    selected_sub_index = dvd_subtitle_global_index if dvd_selected_subtitle else subtitle_item.get('index')
+                    if selected_sub_index is not None:
+                        cmd += ['-map', f'0:{int(selected_sub_index)}']
                 except (ValueError, TypeError):
                     pass
             cmd += video_args + ['-c:a', ('libmp3lame' if fmt == 'avi' else ('aac' if fmt == 'mp4' or normalize_audio else 'copy'))]
@@ -1334,7 +1589,14 @@ class LunaVideoStudio(Gtk.Application):
                 cmd += ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11']
             if subtitle_item and fmt == 'mp4' and not bluray_selected_subtitle and not burn_dvd_subtitle:
                 cmd += ['-c:s', 'mov_text']
-            elif subtitle_item and not burn_bluray_subtitle and not burn_dvd_subtitle:
+            elif subtitle_item and fmt == 'avi' and not burn_bluray_subtitle and not burn_dvd_subtitle:
+                # AVI supports embedded XSUB subtitles. FFmpeg converts the
+                # selected subtitle stream to XSUB rather than dropping it.
+                cmd += ['-c:s', 'xsub', '-tag:s', 'DXSB']
+                if subtitle_item.get('language'):
+                    cmd += ['-metadata:s:s:0', f"language={normalize_language_code(subtitle_item.get('language', '')) or subtitle_item.get('language')}"]
+            elif subtitle_item and fmt == 'mkv' and not burn_bluray_subtitle and not burn_dvd_subtitle:
+                # MKV can preserve text, DVD-SPU and Blu-ray PGS subtitle streams.
                 cmd += ['-c:s', 'copy']
         safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', track.get('title', 'Video')).strip('_') or 'Video'
         suffix = '_TEST_1_MINUTE' if test_clip else ''
@@ -1353,7 +1615,7 @@ class LunaVideoStudio(Gtk.Application):
         if burn_bluray_subtitle:
             self.status_label.set_text(f'Blu-ray-PGS wird direkt ins {fmt.upper()}-Bild eingebrannt …')
         elif burn_dvd_subtitle:
-            self.status_label.set_text('DVD-Untertitel werden mit FFmpeg direkt ins MP4-Bild eingebrannt …')
+            self.status_label.set_text(f'DVD-Untertitel werden mit FFmpeg direkt ins {fmt.upper()}-Bild eingebrannt …')
         else:
             if test_clip:
                 status_text = '1-Minuten-Testclip läuft. FFmpeg verarbeitet den Filmausschnitt …'
@@ -1363,7 +1625,7 @@ class LunaVideoStudio(Gtk.Application):
         # Auto-eject is opt-in after successful full rip OR successful 1-minute test.
         eject_candidate = self.source_path if self.source_path and self.source_path.startswith('/dev/') else self.selected_device()
         eject_device = eject_candidate if self.auto_eject_check.get_active() and eject_candidate and eject_candidate.startswith('/dev/') else None
-        worker_mode = {'is_dvd_full_rip': bool(track.get('dvd_title') and not is_bluray_source and not test_clip), 'limit_to_minute': bool(test_clip), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
+        worker_mode = {'is_dvd_full_rip': bool(track.get('dvd_title') and not is_bluray_source and not test_clip), 'limit_to_minute': bool(test_clip), 'seek_seconds': max(0, int(duration / 2 - 30)), 'audio_index': (audio_item or {}).get('index', '0x80'), 'subtitle_language': (subtitle_item or {}).get('language', ''), 'dvd_title': track.get('dvd_title', 1), 'dvd_device': source if source.startswith('/dev/') else (self.selected_device() or '/dev/sr0'), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
         self.rip_thread = threading.Thread(target=self._encoding_worker, args=(cmd, output, worker_mode), daemon=True)
         self.rip_thread.start()
 
