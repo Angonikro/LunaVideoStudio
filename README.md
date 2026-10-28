@@ -1,11 +1,6 @@
-# LunaVideoStudio 1.3.77
+# LunaVideoStudio 1.3.80
 
-
--  GTK4-Anwendung für Debian/Linux Raspberry PI OS zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP4 MKV AVI . Die Videoverarbeitung erfolgt mit FFmpeg.
-
-![lunaVideoStudio](lunavideostudio.png)
-
-[Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
+GTK4-Anwendung für Debian/Linux zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln. Die Videoverarbeitung erfolgt mit FFmpeg.
 
 ## Funktionen
 
@@ -13,7 +8,7 @@
 
 - DVD-Zwischendateien für den MPlayer-Test werden unter `~/.cache/luna-video-studio/dvdtest/` statt in `/tmp` abgelegt.
 
-- „Rippen starten“ und „1-Minuten-Test“ bleiben beide vorhanden. „Rippen starten“ nutzt den Test-Verarbeitungspfad ohne die testbedingte Startposition und 60-Sekunden-Begrenzung.
+- „Rippen starten“ und „1-Minuten-Test“ bleiben beide vorhanden. „Rippen starten“ verwendet für vollständige DVDs FFmpeg mit dem dvdvideo-Demuxer und dem ausgewählten DVD-Titel. Der MPlayer-Zwischenschritt bleibt dem 1-Minuten-Test vorbehalten.
 
 - Optische Laufwerke erkennen und DVD-/Blu-ray-Medien einlesen
 - DVD-/Blu-ray-Titel sowie Audio- und Untertitelspuren anzeigen, soweit die Disc und installierten Werkzeuge diese Informationen bereitstellen
@@ -50,7 +45,7 @@ Die Oberfläche unterstützt Deutsch und Englisch. Die Sprache lässt sich oben 
 Installiere LunaVideoStudio:
 
 ```bash
-sudo apt install ./LunaVideoStudio_1.3.77_all.deb
+sudo apt install ./LunaVideoStudio_1.3.80_all.deb
 ```
 
 Starte die Anwendung über das Anwendungsmenü oder mit:
@@ -61,7 +56,7 @@ luna-video-studio
 
 ## ZIP-/GitHub-Version starten
 
-Entpacke `LunaVideoStudio_1.3.77_GitHub.zip`. Im Archiv liegt der Projektordner `LunaVideoStudio`. Öffne ein Terminal in diesem Ordner und installiere die Abhängigkeiten:
+Entpacke `LunaVideoStudio_1.3.80_GitHub.zip`. Im Archiv liegt der Projektordner `LunaVideoStudio`. Öffne ein Terminal in diesem Ordner und installiere die Abhängigkeiten:
 
 ```bash
 sudo apt update
@@ -135,7 +130,7 @@ Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach ein
 
 ## Hintergrund: DVD-Titelauswahl
 
-DVD-Komplettrip und DVD-Minuten-Test verwenden dieselbe MPlayer-basierte DVD-Navigation, Entschlüsselung und Untertitelauswahl. Nur beim Minuten-Test wird die Dauer auf 60 Sekunden begrenzt. Für Blu-ray verwenden beide Aktionen dieselbe ausgewählte MPLS-Playlist und denselben FFmpeg-Streamindex.
+Der vollständige DVD-Rip verwendet FFmpeg mit dem dvdvideo-Demuxer und dem ausgewählten DVD-Titel. Der 1-Minuten-Test verwendet weiterhin MPlayer für DVD-Navigation und Untertitelauswahl und FFmpeg für die Erstellung des Testclips. Für Blu-ray verwenden beide Aktionen dieselbe ausgewählte MPLS-Playlist und denselben FFmpeg-Streamindex.
 
 ## Änderungen in 1.3.74
 
@@ -157,4 +152,11 @@ Nach dem Einlesen wird zunächst der längste erkannte Titel vorgeschlagen. Du k
 
 Die Zuordnung von Blu-ray-Sprachmetadaten erfolgt über die Stream-PID, und die ausgewählte PGS-Spur wird im FFmpeg-Filter über ihren globalen Streamindex angesprochen. Bitte den Ein-Minuten-Test mit der eigenen Disc durchführen; eine erfolgreiche Hardware-/Disc-Prüfung ist nicht Bestandteil des Quellpakets.
 
-73 de DO2QG Andreas
+- Version 1.3.56: DVD-Minuten-Test verifiziert die ausgewählte Untertitelsprache über MPlayers eigene SID-/Sprach-Erkennung; wenn die Sprache nicht eindeutig bestätigt werden kann, wird der Test abgebrochen statt eine falsche Sprache einzubrennen.
+
+
+## Änderungen in 1.3.79
+
+- Vollständiger DVD-Rip wieder auf den FFmpeg-`dvdvideo`-Pfad mit expliziter Auswahl des erkannten DVD-Titels umgestellt. Der MPlayer-Rohvideo-Zwischenschritt wird nur noch für den 1-Minuten-Test verwendet, da er bei vollständigen DVD-Rips offenbar nur einen Teil des Films lieferte.
+- Der Blu-ray-Pfad und die Auswahl des Blu-ray-Streams wurden nicht gezielt verändert.
+- README mit dem neuen Versionsstand und der getrennten DVD-Verarbeitung aktualisiert.

@@ -1,3 +1,15 @@
+# Changelog
+
+## 1.3.80
+- Vollständige DVD-Rips werden anhand der von lsdvd erkannten Titellaufzeit geprüft. Eine deutlich zu kurze Datei (unter 90 % der erwarteten Laufzeit) wird nicht mehr als „Fertig“ gemeldet; die Statusmeldung nennt erkannte und tatsächliche Laufzeit. Der zugrunde liegende Leseabbruch wird damit sichtbar, nicht automatisch repariert.
+
+## 1.3.79
+- Fixed full DVD rip audio mapping: DVD stream IDs (e.g. 0x80/0x81) are not FFmpeg global stream indexes. The selected DVD audio track is now mapped by its audio-stream position, preventing the wrong language from being encoded.
+
+## 1.3.78
+- Vollständige DVD-Rips nutzen wieder FFmpeg `dvdvideo` mit explizitem DVD-Titel; MPlayer-Rohvideo-Zwischenschritt bleibt für den 1-Minuten-Test.
+- README aktualisiert. Blu-ray-Verarbeitung nicht gezielt geändert.
+
 # LunaVideoStudio 1.3.77
 
 - Version 1.3.77: Laufzeit-Label wird auch beim initialen Aufbau und beim Start eines Rips anhand der gewählten Sprache gesetzt. README bleibt unverändert.

@@ -15,7 +15,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, Gio, GLib
 
-APP_VERSION = "1.3.77"
+APP_VERSION = "1.3.80"
 
 def normalize_language_code(value):
     """Normalize DVD language labels/codes to ISO-639-2 codes when possible."""
@@ -1147,8 +1147,10 @@ class LunaVideoStudio(Gtk.Application):
             threading.Thread(target=stop_process_tree, args=(proc,), daemon=True).start()
 
     def start_rip(self, *_):
-        # Use the same processing pipeline as the one-minute test, without its time limit.
-        self._launch_encoding(test_clip=False, test_pipeline=True)
+        # Full DVD rips use FFmpeg's dvdvideo demuxer and the selected full title.
+        # MPlayer's raw-video intermediate pipeline is reserved for the 1-minute preview;
+        # it has been observed to stop short on some discs during full-length extraction.
+        self._launch_encoding(test_clip=False, test_pipeline=False)
 
     def start_test_rip(self, *_):
         # Keep the one-minute test button and its original behavior.
@@ -1269,10 +1271,18 @@ class LunaVideoStudio(Gtk.Application):
                 sub_stream_index = int(subtitle_item.get('index', 0))
                 cmd += ['-filter_complex', f'[0:v:0][0:{sub_stream_index}]overlay[vout]', '-map', '[vout]']
                 if audio_item:
-                    try:
-                        cmd += ['-map', f"0:{int(audio_item['index'])}"]
-                    except (ValueError, TypeError):
-                        cmd += ['-map', '0:a:0?']
+                    if track.get('dvd_title') and not is_bluray_source:
+                        # lsdvd exposes DVD audio stream IDs such as 0x80/0x81,
+                        # which are NOT FFmpeg global stream indexes. The dvdvideo
+                        # demuxer orders audio streams as 0:a:0, 0:a:1, ... .
+                        # Map by the selected audio's position in the detected list
+                        # so selecting German does not accidentally fall back to English.
+                        cmd += ['-map', f'0:a:{audio_pos}']
+                    else:
+                        try:
+                            cmd += ['-map', f"0:{int(audio_item['index'])}"]
+                        except (ValueError, TypeError):
+                            cmd += ['-map', '0:a:0?']
                 else:
                     cmd += ['-map', '0:a:0?']
                 cmd += ['-sn']
@@ -1282,10 +1292,16 @@ class LunaVideoStudio(Gtk.Application):
                     sub_stream_index = int(subtitle_item.get('index', 0))
                     cmd += ['-map', f'0:{sub_stream_index}']
                 if audio_item:
-                    try:
-                        cmd += ['-map', f"0:{int(audio_item['index'])}"]
-                    except (ValueError, TypeError):
-                        cmd += ['-map', '0:a:0?']
+                    if track.get('dvd_title') and not is_bluray_source:
+                        # DVD stream IDs (0x80, 0x81, ...) are not FFmpeg global
+                        # stream indexes. Use the selected audio stream's ordinal
+                        # within FFmpeg's dvdvideo audio list instead.
+                        cmd += ['-map', f'0:a:{audio_pos}']
+                    else:
+                        try:
+                            cmd += ['-map', f"0:{int(audio_item['index'])}"]
+                        except (ValueError, TypeError):
+                            cmd += ['-map', '0:a:0?']
                 else:
                     cmd += ['-map', '0:a:0?']
             if not burn_bluray_subtitle and subtitle_item and not bluray_selected_subtitle:
@@ -1338,7 +1354,7 @@ class LunaVideoStudio(Gtk.Application):
         # Auto-eject is opt-in after successful full rip OR successful 1-minute test.
         eject_candidate = self.source_path if self.source_path and self.source_path.startswith('/dev/') else self.selected_device()
         eject_device = eject_candidate if self.auto_eject_check.get_active() and eject_candidate and eject_candidate.startswith('/dev/') else None
-        worker_mode = {'dvd_mplayer_pipeline': dvd_mplayer_pipeline, 'limit_to_minute': bool(test_clip), 'seek_seconds': max(0, int(duration / 2 - 30)), 'audio_index': (audio_item or {}).get('index', '0x80'), 'subtitle_sid': subtitle_sid, 'subtitle_language': (subtitle_item or {}).get('language', ''), 'dvd_title': track.get('dvd_title', 1), 'dvd_device': source if source.startswith('/dev/') else (self.selected_device() or '/dev/sr0'), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
+        worker_mode = {'dvd_mplayer_pipeline': dvd_mplayer_pipeline, 'is_dvd_full_rip': bool(track.get('dvd_title') and not is_bluray_source and not test_clip), 'limit_to_minute': bool(test_clip), 'seek_seconds': max(0, int(duration / 2 - 30)), 'audio_index': (audio_item or {}).get('index', '0x80'), 'subtitle_sid': subtitle_sid, 'subtitle_language': (subtitle_item or {}).get('language', ''), 'dvd_title': track.get('dvd_title', 1), 'dvd_device': source if source.startswith('/dev/') else (self.selected_device() or '/dev/sr0'), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
         self.rip_thread = threading.Thread(target=self._encoding_worker, args=(cmd, output, worker_mode), daemon=True)
         self.rip_thread.start()
 
@@ -1553,6 +1569,14 @@ class LunaVideoStudio(Gtk.Application):
                         duration_value = float((data.get('format') or {}).get('duration') or 0)
                         if 'video' not in types or duration_value < 5:
                             raise RuntimeError('Video-Stream oder plausible Laufzeit fehlt.')
+                        expected_duration = float(worker_mode.get('duration_seconds') or 0)
+                        if worker_mode.get('is_dvd_full_rip') and expected_duration > 0 and duration_value < expected_duration * 0.90:
+                            raise RuntimeError(
+                                f'Unvollständiger DVD-Rip: erkannt {expected_duration / 60:.1f} Min., '
+                                f'Datei enthält nur {duration_value / 60:.1f} Min. '
+                                '(mindestens 90 % der erkannten Titellaufzeit erforderlich). '
+                                'Die Datei wird nicht als „Fertig“ gewertet.'
+                            )
                 except (OSError, RuntimeError, ValueError, TypeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
                     message = f'Encoding beendet, aber Dateiprüfung fehlgeschlagen: {exc}'
                     fraction = 0.0
@@ -1591,11 +1615,19 @@ class LunaVideoStudio(Gtk.Application):
                             stream_types = [item.get('codec_type') for item in probe_data.get('streams', [])]
                             duration_value = float((probe_data.get('format') or {}).get('duration') or 0)
                             expected_duration = float(worker_mode.get('duration_seconds') or 0)
-                            # Test clips are 60 s; full rips should be at least
-                            # several seconds and ffprobe must parse the container.
-                            duration_ok = duration_value >= 5 and (expected_duration <= 0 or bool(worker_mode.get('limit_to_minute')) or duration_value >= min(5, expected_duration * 0.5))
+                            # Test clips are intentionally short. A full DVD rip must
+                            # closely match lsdvd's detected title duration; otherwise
+                            # a truncated file must never be reported as successful.
+                            duration_ok = duration_value >= 5
+                            if worker_mode.get('is_dvd_full_rip') and expected_duration > 0:
+                                duration_ok = duration_ok and duration_value >= expected_duration * 0.90
+                                if not duration_ok:
+                                    validation_detail = (
+                                        f'Unvollständiger DVD-Rip: erkannt {expected_duration / 60:.1f} Min., '
+                                        f'Datei enthält {duration_value / 60:.1f} Min. (erforderlich: mindestens 90 %).'
+                                    )
                             validated = 'video' in stream_types and duration_ok
-                            if not validated:
+                            if not validated and not validation_detail:
                                 validation_detail = 'Die Ausgabedatei enthält keinen gültigen Videostream oder keine plausible Laufzeit.'
                         else:
                             validation_detail = (probe.stderr or 'FFprobe konnte die Datei nicht prüfen.').strip().splitlines()[-1]
