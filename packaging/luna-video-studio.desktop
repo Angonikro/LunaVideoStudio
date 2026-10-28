@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Luna-Video-Studio
+Comment=DVD- und Blu-ray-Videokonverter (DVD und Blu-ray analysieren)
+Exec=luna-video-studio
+Icon=applications-multimedia
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Utility;

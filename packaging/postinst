@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+chmod 755 /usr/bin/luna-video-studio 2>/dev/null || true
+exit 0
