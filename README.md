@@ -59,6 +59,11 @@ Die Einstellungen werden automatisch in `~/.config/luna-video-studio/settings.js
 
 Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach einem erfolgreich erstellten 1-Minuten-Testclip ausgeworfen. Bei einem Abbruch wird sie nicht ausgeworfen.
 
+## Hintergrund: DVD-Titelauswah
+
+## Zielordner pro Disc
+
+Der eingestellte Zielordner ist der Basisordner (zum Beispiel `~/Videos`). Nach erfolgreichem Einlesen wird im Feld automatisch ein Unterordner mit dem erkannten Disc-/Filmnamen angezeigt, zum Beispiel `~/Videos/COLLATERAL_BEAUTY`. In `~/.config/luna-video-studio/settings.json` bleibt nur der Basisordner gespeichert. Beim Einlesen der nächsten Disc wird der neue Titelordner relativ zum gleichen Basisordner angezeigt.
 
 ## Installation: Debian-Paket
 
@@ -68,7 +73,7 @@ Installiere LunaVideoStudio:
 sudo apt install ./LunaVideoStudio_1.3.94_all.deb
 ```
 
-Starte die Anwendung über das Anwendungsmenü oder mit:
+Starte die Anwendung über das Anwendungsmenü oder im Terminal mit:
 
 ```bash
 luna-video-studio
@@ -135,12 +140,5 @@ Danach gegebenenfalls ab- und wieder anmelden. `pgsrip` ist ein zusätzliches We
 - `src/luna_video_studio/main.py` – Anwendung
 - `packaging/` – Debian-Paket-Metadaten, Starter und Desktop-Datei
 - `CHANGELOG.md` – Versionsänderungen
-
-
-## Hintergrund: DVD-Titelauswah
-
-## Zielordner pro Disc
-
-Der eingestellte Zielordner ist der Basisordner (zum Beispiel `~/Videos`). Nach erfolgreichem Einlesen wird im Feld automatisch ein Unterordner mit dem erkannten Disc-/Filmnamen angezeigt, zum Beispiel `~/Videos/COLLATERAL_BEAUTY`. In `~/.config/luna-video-studio/settings.json` bleibt nur der Basisordner gespeichert. Beim Einlesen der nächsten Disc wird der neue Titelordner relativ zum gleichen Basisordner angezeigt.
 
 73 de DO2QG Andreas
