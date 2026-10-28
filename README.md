@@ -136,49 +136,7 @@ Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach ein
 - `CHANGELOG.md` – Versionsänderungen
 
 
-## Hintergrund: DVD-Titelauswahl
-
-
-## Änderungen in 1.3.74
-
-- Sichtbare Sprachauswahl „Deutsch / English“ oben rechts ergänzt. Die Auswahl wird gespeichert. Beim Sprachwechsel bleiben die tatsächlich erkannten Audio- und Untertitelspuren erhalten.
-- DVD-Analyse behandelt ungültige/nicht-UTF-8-Bytes in Werkzeugausgaben tolerant, statt beim Einlesen mit `UnicodeDecodeError` abzubrechen. Das betrifft besonders DVD-Namen und Metadaten; andere DVDs behalten den bisherigen Analysepfad.
-## Version 1.3.36
-
-- Fortschrittsanzeige aktualisiert sich während des FFmpeg-Encoding anhand der verarbeiteten Laufzeit.
-- FFmpeg-Statusausgabe wird separat gelesen, damit die Anwendung während des Encodings nicht auf das Ende warten muss.
-- DVD-Titel werden weiterhin über den ausgewählten `dvdvideo`-Titelparameter verarbeitet; bitte nach dem Update kontrollieren, dass nur der gewünschte Haupttitel ausgegeben wird.
-
-
-## Titelauswahl (1.3.36)
-Nach dem Einlesen wird zunächst der längste erkannte Titel vorgeschlagen. Du kannst in der Titelliste den gewünschten Film anklicken. Nur der ausgewählte Titel wird für den vollständigen Rip und den 1-Minuten-Test verwendet; Ton- und Untertitelspuren werden passend zum Titel angezeigt.
-
-
-### Blu-ray-Untertitel in 1.3.59
-
-Die Zuordnung von Blu-ray-Sprachmetadaten erfolgt über die Stream-PID, und die ausgewählte PGS-Spur wird im FFmpeg-Filter über ihren globalen Streamindex angesprochen. Bitte den Ein-Minuten-Test mit der eigenen Disc durchführen; eine erfolgreiche Hardware-/Disc-Prüfung ist nicht Bestandteil des Quellpakets.
-
-
-
-
-## Änderungen in 1.3.79
-
-- Der Blu-ray-Pfad und die Auswahl des Blu-ray-Streams wurden nicht gezielt verändert.
-- README mit dem neuen Versionsstand und der getrennten DVD-Verarbeitung aktualisiert.
-
-
-## Version 1.3.88
-
-- MPlayer vollständig aus dem aktiven Quellcode entfernt; DVD-Minuten-Test und vollständiger Rip nutzen FFmpeg.
-- Option „Vorschaubild anzeigen“ ergänzt; das Vorschaubild wird für den ausgewählten Titel aus der Filmmitte erzeugt und berücksichtigt das gewählte Qualitätsprofil für die Bildvorschau.
-- Einstellungen werden in `~/.config/luna-video-studio/settings.json` gespeichert: Sprache, alle Checkboxen, Ausgabeordner, Zielformat und Qualitätsprofil.
-- Fenstergröße um ungefähr 5 cm in der Breite und 3 cm in der Höhe reduziert.
-
-
-### Version 1.3.90
-- Der Hinweis zur Vorschau wird direkt unter der Checkbox im Bereich „Quelle auswählen“ angezeigt. Dadurch entsteht keine leere Zeile mehr im Bereich „Ausgabe einstellen“.
-- Englische Beschriftungen der Vorschau- und Audio-Normalisierungsoption bleiben enthalten.
-
+## Hintergrund: DVD-Titelauswah
 
 ## Zielordner pro Disc
 
