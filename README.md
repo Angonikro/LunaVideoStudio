@@ -83,7 +83,7 @@ chmod +x packaging/luna-video-studio
 ```bash
 sudo apt update
 sudo apt install pipx mkvtoolnix
-
+```
 `mkvtoolnix` stellt unter anderem `mkvmerge` bereit und wird für zusätzliche MKV-Werkzeuge benötigt.
 
 ### Blu-ray-PGS-Untertitel mit OCR
