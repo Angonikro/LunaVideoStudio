@@ -1,14 +1,14 @@
 # LunaVideoStudio 1.3.94
 
-
 GTK4-Anwendung für Debian/Linux zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP4 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
+
+![LunaVideoStudio](lunavideostudio1.png)
+
+[Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
 
 ## Funktionen
 
 - Laufzeitanzeige während des Rippens und Anzeige der Gesamtdauer nach Abschluss (auch bei Abbruch/Fehler).
-
-
-
 - Optische Laufwerke erkennen und DVD-/Blu-ray-Medien einlesen
 - DVD-/Blu-ray-Titel sowie Audio- und Untertitelspuren anzeigen, soweit die Disc und installierten Werkzeuge diese Informationen bereitstellen
 - Ausgabeformate MP4, MKV und AVI auswählen
