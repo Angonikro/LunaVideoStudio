@@ -1,4 +1,27 @@
+## 1.3.85
+- MPlayer-Verarbeitungspfad, Untertitel-Probe-Funktion und MPlayer-Fortschrittsfunktionen vollständig aus dem Anwendungscode entfernt.
+- DVD-Minuten-Test und vollständiger Rip verwenden ausschließlich den bestehenden FFmpeg-Verarbeitungspfad.
+- README und ZIP-Installationsanleitung bereinigt; MPlayer ist keine Abhängigkeit.
+- Untertitelauflösung über FFprobe/FFmpeg und Blu-ray-Verarbeitung nicht gezielt geändert.
+
+## 1.3.84
+- 1-Minuten-Test verwendet FFmpeg direkt wie der vollständige DVD-Rip.
+- DVD-Titel, ausgewählte Audio-Spur und anhand FFmpeg-Metadaten zugeordnete Untertitelsprache werden auch im Test verwendet.
+- Kein MPlayer und keine unkomprimierten Y4M/WAV-Zwischendateien für den Testclip.
+
+## 1.3.83
+- DVD MP4 subtitle burning resolves FFmpeg subtitle streams by language and stops safely if it cannot identify the requested language.
+
+## 1.3.82
+- DVD-MP4: Die ausgewählte Untertitelspur wird anhand ihrer echten DVD-SPU-Stream-ID (z. B. 0x22) an FFmpeg übergeben, statt blind die N-te Untertitelspur zu verwenden. Damit werden Abweichungen zwischen lsdvd- und FFmpeg-Spurreihenfolge vermieden.
+- FFmpeg bleibt der Standard für vollständige DVD-Rips; MPlayer wird nicht neu für den vollständigen Rip aktiviert.
+- Vollständiger Film und bisherige deutsche Audio-Zuordnung bleiben unverändert. Kein echter DVD-Test in der Build-Umgebung möglich.
+
 # Changelog
+
+## 1.3.81
+- MP4-DVD-Rips: ausgewählte DVD-Bitmap-Untertitel werden über FFmpeg-Overlay direkt ins Bild eingebrannt, statt fälschlich als Textuntertitelspur behandelt zu werden. Deutsche Tonspur bleibt über die bestehende Audio-Auswahl gemappt.
+- Hinweis: Funktion hängt davon ab, dass die eingesetzte FFmpeg-Version DVD-Untertitel über den dvdvideo-Demuxer bereitstellt; kein echter DVD-Test in der Build-Umgebung möglich.
 
 ## 1.3.80
 - Vollständige DVD-Rips werden anhand der von lsdvd erkannten Titellaufzeit geprüft. Eine deutlich zu kurze Datei (unter 90 % der erwarteten Laufzeit) wird nicht mehr als „Fertig“ gemeldet; die Statusmeldung nennt erkannte und tatsächliche Laufzeit. Der zugrunde liegende Leseabbruch wird damit sichtbar, nicht automatisch repariert.

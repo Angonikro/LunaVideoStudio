@@ -15,7 +15,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 from gi.repository import Gtk, Gio, GLib
 
-APP_VERSION = "1.3.80"
+APP_VERSION = "1.3.85"
 
 def normalize_language_code(value):
     """Normalize DVD language labels/codes to ISO-639-2 codes when possible."""
@@ -41,20 +41,34 @@ def normalize_language_code(value):
     return ''
 
 
-def probe_mplayer_dvd_subtitles(device, title):
-    """Ask MPlayer itself for DVD subtitle IDs and their language metadata."""
-    command = [
-        'mplayer', '-identify', '-frames', '0', '-vo', 'null', '-ao', 'null',
-        '-dvd-device', str(device or '/dev/sr0'), 'dvd://' + str(title or 1),
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, errors='replace', timeout=45, check=False)
-    output = (result.stdout or '') + '\n' + (result.stderr or '')
-    found = {}
-    for match in re.finditer(r'^ID_SID_(\d+)_LANG=([^\s]+)', output, re.MULTILINE | re.IGNORECASE):
-        sid = int(match.group(1))
-        found[sid] = normalize_language_code(match.group(2))
-    return found, output
 
+def probe_ffmpeg_dvd_subtitle_streams(device, title):
+    """Probe DVD subtitle streams as FFmpeg actually sees them.
+
+    lsdvd SPU IDs do not reliably correspond to dvdvideo stream indexes on all
+    discs. Use FFmpeg's own stream indexes and language tags for the burn filter.
+    """
+    command = [
+        'ffprobe', '-v', 'error', '-f', 'dvdvideo', '-title', str(title or 1),
+        '-i', str(device), '-show_streams', '-of', 'json'
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, errors='replace', timeout=60, check=False)
+    if result.returncode != 0 or not result.stdout.strip():
+        detail = (result.stderr or 'FFprobe konnte die DVD-Untertitel nicht lesen.').strip()
+        raise RuntimeError(detail.splitlines()[-1])
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('FFprobe lieferte keine gültige Streamliste für die DVD.') from exc
+    streams = []
+    for stream in payload.get('streams', []):
+        if stream.get('codec_type') != 'subtitle':
+            continue
+        tags = stream.get('tags') or {}
+        language = normalize_language_code(tags.get('language', ''))
+        stream_id = str(stream.get('id', '')).strip().lower()
+        streams.append({'index': stream.get('index'), 'language': language, 'id': stream_id})
+    return streams
 
 def shutil_which(command):
     return shutil.which(command)
@@ -736,25 +750,12 @@ class LunaVideoStudio(Gtk.Application):
                                 if not language or language.lower() in ('xx', 'und', 'unknown'):
                                     language = 'Sprache unbekannt'
                                 codec = (sub.findtext('format') or 'DVD-Untertitel').strip()
-                                # Map the DVD SPU stream ID to MPlayer's SID. These are
-                                # different numbering spaces: MPlayer reports 1,3,5,...
-                                # for DVD SPU IDs 0x20,0x21,0x22,... on real DVD titles.
-                                # Never treat lsdvd's <ix> as MPlayer's SID: some builds
-                                # expose it zero-based, which caused duplicate-language
-                                # tracks to be confused (e.g. 0x22 incorrectly became SID 2).
+                                # Keep the DVD SPU stream ID for display and diagnostics.
+                                # FFmpeg's actual stream index is resolved separately via ffprobe.
                                 ordinal_text = (sub.findtext('ix') or '').strip()
-                                mplayer_sid = None
-                                if stream_id and re.fullmatch(r'0x[0-9a-fA-F]+', stream_id):
-                                    spu_id = int(stream_id, 16)
-                                    if 0x20 <= spu_id <= 0x3f:
-                                        mplayer_sid = (spu_id - 0x20) * 2 + 1
-                                if mplayer_sid is None:
-                                    # Do not guess a SID from an ordinal when the stream ID
-                                    # is missing; the worker may resolve a unique language.
-                                    mplayer_sid = None
-                                display_id = stream_id or ordinal_text or str(mplayer_sid)
+                                display_id = stream_id or ordinal_text or str(len(subtitle_choices))
                                 label = f'{language} · {codec} (Spur {display_id})'
-                                subtitle_choices.append({'label': label, 'index': display_id, 'sid': mplayer_sid, 'language': language, 'codec': codec})
+                                subtitle_choices.append({'label': label, 'index': display_id, 'has_spu_id': bool(stream_id and re.fullmatch(r'0x(?:2[0-9a-fA-F]|3[0-9a-fA-F])', stream_id)), 'language': language, 'codec': codec})
                             audio_count = len(title.findall('./audio'))
                             if seconds > 1:
                                 detail = f'{chapters} Kapitel · DVD'
@@ -804,15 +805,8 @@ class LunaVideoStudio(Gtk.Application):
                         language = language or 'Sprache unbekannt'
                         stream_id = stream_id or f'Spur {sub_number}'
                         label = f'{language} · DVD-Untertitel (Spur {stream_id})'
-                        # Map the DVD SPU stream ID to MPlayer's actual SID numbering.
-                        # MPlayer's DVD SID values are 1,3,5,... for SPU IDs 0x20,0x21,
-                        # 0x22,...; lsdvd's displayed ordinal is not a reliable SID.
-                        mplayer_sid = None
-                        if stream_id and re.fullmatch(r'0x[0-9a-fA-F]+', stream_id):
-                            spu_id = int(stream_id, 16)
-                            if 0x20 <= spu_id <= 0x3f:
-                                mplayer_sid = (spu_id - 0x20) * 2 + 1
-                        subs.append({'label': label, 'index': stream_id, 'sid': mplayer_sid, 'language': language, 'codec': 'DVD-Untertitel'})
+                        has_spu_id = bool(stream_id and re.fullmatch(r'0x(?:2[0-9a-fA-F]|3[0-9a-fA-F])', stream_id))
+                        subs.append({'label': label, 'index': stream_id, 'has_spu_id': has_spu_id, 'language': language, 'codec': 'DVD-Untertitel'})
                     text_titles[number] = (length, chapters, subs, audios)
                 if not parsed:
                     for number, (length, chapters, subs, audios) in text_titles.items():
@@ -830,17 +824,13 @@ class LunaVideoStudio(Gtk.Application):
                     for number, (length, chapters, subs, audios) in text_titles.items():
                         target = by_number.get(number)
                         if target and (subs or audios):
-                            # Keep XML subtitle entries when they contain per-title
-                            # <ix> ordinals. The human-readable lsdvd output exposes
-                            # MPEG-PS stream IDs (0x20..0x3f), which are NOT MPlayer
-                            # -sid values. Replacing XML entries with text-derived
-                            # entries silently mapped e.g. 0x22 to SID 2 and caused
-                            # MPlayer to report a different language or unknown SID.
+                            # Prefer XML subtitle entries when they include reliable
+                            # per-title DVD SPU stream IDs; otherwise use text metadata.
                             xml_subs = target.get('subtitles') or []
-                            xml_has_ordinals = bool(xml_subs) and all(
-                                isinstance(item.get('sid'), int) for item in xml_subs
+                            xml_has_spu_ids = bool(xml_subs) and all(
+                                item.get('has_spu_id', False) for item in xml_subs
                             )
-                            if subs and not xml_has_ordinals:
+                            if subs and not xml_has_spu_ids:
                                 target['subtitles'] = subs
                             if audios:
                                 target['audio'] = audios
@@ -1148,13 +1138,12 @@ class LunaVideoStudio(Gtk.Application):
 
     def start_rip(self, *_):
         # Full DVD rips use FFmpeg's dvdvideo demuxer and the selected full title.
-        # MPlayer's raw-video intermediate pipeline is reserved for the 1-minute preview;
-        # it has been observed to stop short on some discs during full-length extraction.
         self._launch_encoding(test_clip=False, test_pipeline=False)
 
     def start_test_rip(self, *_):
-        # Keep the one-minute test button and its original behavior.
-        self._launch_encoding(test_clip=True, test_pipeline=True)
+        # Use the same FFmpeg DVD/Blu-ray demuxing, stream mapping, and subtitle
+        # handling as the full rip.
+        self._launch_encoding(test_clip=True, test_pipeline=False)
 
     def _launch_encoding(self, test_clip=False, test_pipeline=False):
         if not self.track_rows:
@@ -1172,13 +1161,7 @@ class LunaVideoStudio(Gtk.Application):
             self.status_label.set_text('Keine gültige Quelle für die Umwandlung gefunden.')
             return
         is_bluray_source = source.startswith('bluray:') or track.get('details', '').startswith('Blu-ray')
-        # DVD full-rip and one-minute preview deliberately share the same MPlayer
-        # navigation/decryption and subtitle-selection pipeline. Only the duration
-        # limit differs; Blu-ray keeps its FFmpeg playlist/stream-index pipeline.
-        dvd_mplayer_pipeline = bool(test_pipeline and track.get('dvd_title') and not is_bluray_source)
-        if dvd_mplayer_pipeline and not shutil_which('mplayer'):
-            self.status_label.set_text('Für den DVD-Testclip fehlt MPlayer. Bitte mplayer installieren.')
-            return
+        # Both full DVD rips and one-minute previews use FFmpeg's dvdvideo demuxer.
         outdir = os.path.expanduser(self.output_entry.get_text().strip() or str(Path.home() / 'Videos'))
         try:
             os.makedirs(outdir, exist_ok=True)
@@ -1203,13 +1186,39 @@ class LunaVideoStudio(Gtk.Application):
         subtitle_items = track.get('subtitles', [])
         sub_pos = self.subtitle_dropdown.get_selected()
         # Dropdown index 0 is the explicit 'no subtitles' choice; real subtitle
-        # tracks begin at dropdown index 1. Keep the UI index separate from the
-        # DVD SPU stream ID used by MPlayer.
+        # tracks begin at dropdown index 1.
         subtitle_item = subtitle_items[sub_pos - 1] if 0 < sub_pos <= len(subtitle_items) else None
+        dvd_subtitle_global_index = None
+        # Resolve the selected DVD subtitle using FFmpeg's own stream metadata.
+        # The lsdvd stream ID (0x20, 0x21, ...) is not consistently preserved as
+        # the FFmpeg dvdvideo stream ID, which can burn a different language.
+        if (track.get('dvd_title') and not is_bluray_source and subtitle_item
+                and fmt == 'mp4'):
+            try:
+                ff_subs = probe_ffmpeg_dvd_subtitle_streams(source, track['dvd_title'])
+                wanted_language = normalize_language_code(subtitle_item.get('language', ''))
+                matches = [item for item in ff_subs if wanted_language and item.get('language') == wanted_language]
+                if len(matches) == 1:
+                    dvd_subtitle_global_index = matches[0].get('index')
+                elif len(matches) > 1:
+                    # Preserve the selected occurrence among tracks of the same
+                    # language rather than silently choosing the first one.
+                    same_lang_before = sum(1 for item in subtitle_items[:sub_pos - 1]
+                                           if normalize_language_code(item.get('language', '')) == wanted_language)
+                    if same_lang_before < len(matches):
+                        dvd_subtitle_global_index = matches[same_lang_before].get('index')
+                if dvd_subtitle_global_index is None:
+                    self.status_label.set_text(
+                        f'FFmpeg konnte die gewählte Untertitelsprache ({subtitle_item.get("language", "unbekannt")}) nicht eindeutig zuordnen. Bitte DVD erneut einlesen; es werden keine falschen Untertitel eingebrannt.'
+                    )
+                    return
+            except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as exc:
+                self.status_label.set_text(f'DVD-Untertitel konnten nicht sicher zugeordnet werden: {exc}')
+                return
         # Blu-ray input is an FFmpeg bluray: URL. For a full DVD rip, explicitly
         # select FFmpeg's dvdvideo demuxer before passing its title option. Without
         # '-f dvdvideo', FFmpeg treats '-title' as an unknown generic option and
-        # fails with "Option not found". The DVD one-minute test uses MPlayer below.
+        # fails with "Option not found"; DVD processing stays on FFmpeg.
         # The test clip follows the terminal command pattern confirmed on the
         # user's Raspberry Pi, but honors the selected audio language. Use the
         # audio-relative stream index (0:a:N), not ffprobe's global stream ID,
@@ -1228,7 +1237,7 @@ class LunaVideoStudio(Gtk.Application):
             input_arg = source if source.startswith('bluray:') else 'bluray:' + source
         else:
             input_arg = source
-        if track.get('dvd_title') and not is_bluray_source and not test_pipeline:
+        if track.get('dvd_title') and not is_bluray_source:
             cmd += ['-f', 'dvdvideo', '-title', str(track['dvd_title'])]
         # For Blu-ray, the selected title is a specific MPLS playlist. Apply
         # that playlist to the FFmpeg input as well as during probing; otherwise
@@ -1237,16 +1246,22 @@ class LunaVideoStudio(Gtk.Application):
         if is_bluray_source and track.get('bluray_playlist'):
             cmd += ['-playlist', str(track['bluray_playlist'])]
         cmd += ['-i', input_arg]
+        if test_clip:
+            cmd += ['-t', '60']
         bluray_selected_subtitle = bool(is_bluray_source and subtitle_item)
         # Blu-ray PGS subtitles are bitmap streams. For MP4, burn the selected
         # PGS stream into the video frames with FFmpeg's overlay filter. This
         # keeps the requested MP4 container and does not depend on OCR tools.
         # For MKV, keep the PGS subtitle as a selectable separate stream.
         burn_bluray_subtitle = bool(bluray_selected_subtitle and (fmt in ('mp4', 'avi') or test_pipeline))
+        # DVD subpicture tracks are bitmap subtitles too. When FFmpeg's dvdvideo
+        # demuxer exposes them, burn the selected subtitle stream directly into
+        # the video frames instead of trying to mux DVD-SPU into MP4 as mov_text.
+        dvd_selected_subtitle = bool(track.get('dvd_title') and not is_bluray_source and subtitle_item)
+        burn_dvd_subtitle = bool(dvd_selected_subtitle and fmt == 'mp4')
+        dvd_subtitle_relative_index = max(0, sub_pos - 1)
         if test_pipeline:
             audio_map = f'0:a:{audio_pos}?' if audio_item else '0:a:0?'
-            if test_clip:
-                cmd += ['-t', '60']
             if burn_bluray_subtitle:
                 sub_stream_index = int(subtitle_item.get('index', 0))
                 cmd += ['-filter_complex', f'[0:v:0][0:{sub_stream_index}]overlay[vout]', '-map', '[vout]', '-map', audio_map, '-sn']
@@ -1260,16 +1275,21 @@ class LunaVideoStudio(Gtk.Application):
             cmd += video_args + ['-c:a', ('libmp3lame' if fmt == 'avi' else ('aac' if fmt == 'mp4' or normalize_audio else 'copy'))]
             if normalize_audio:
                 cmd += ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11']
-            if subtitle_item and fmt == 'mp4' and not bluray_selected_subtitle:
+            if subtitle_item and fmt == 'mp4' and not bluray_selected_subtitle and not burn_dvd_subtitle:
                 cmd += ['-c:s', 'mov_text']
-            elif subtitle_item and not burn_bluray_subtitle:
+            elif subtitle_item and not burn_bluray_subtitle and not burn_dvd_subtitle:
                 cmd += ['-c:s', 'copy']
             if fmt == 'mp4':
                 cmd += ['-movflags', '+faststart']
         else:
-            if burn_bluray_subtitle:
-                sub_stream_index = int(subtitle_item.get('index', 0))
-                cmd += ['-filter_complex', f'[0:v:0][0:{sub_stream_index}]overlay[vout]', '-map', '[vout]']
+            if burn_bluray_subtitle or burn_dvd_subtitle:
+                if burn_bluray_subtitle:
+                    sub_stream_spec = f"0:{int(subtitle_item.get('index', 0))}"
+                else:
+                    # Use the global FFmpeg stream index resolved by language
+                    # above, not lsdvd's SPU ID or its list position.
+                    sub_stream_spec = f'0:{int(dvd_subtitle_global_index)}'
+                cmd += ['-filter_complex', f'[0:v:0][{sub_stream_spec}]overlay[vout]', '-map', '[vout]']
                 if audio_item:
                     if track.get('dvd_title') and not is_bluray_source:
                         # lsdvd exposes DVD audio stream IDs such as 0x80/0x81,
@@ -1304,7 +1324,7 @@ class LunaVideoStudio(Gtk.Application):
                             cmd += ['-map', '0:a:0?']
                 else:
                     cmd += ['-map', '0:a:0?']
-            if not burn_bluray_subtitle and subtitle_item and not bluray_selected_subtitle:
+            if not burn_bluray_subtitle and not burn_dvd_subtitle and subtitle_item and not bluray_selected_subtitle:
                 try:
                     cmd += ['-map', f"0:{int(subtitle_item['index'])}"]
                 except (ValueError, TypeError):
@@ -1312,9 +1332,9 @@ class LunaVideoStudio(Gtk.Application):
             cmd += video_args + ['-c:a', ('libmp3lame' if fmt == 'avi' else ('aac' if fmt == 'mp4' or normalize_audio else 'copy'))]
             if normalize_audio:
                 cmd += ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11']
-            if subtitle_item and fmt == 'mp4' and not bluray_selected_subtitle:
+            if subtitle_item and fmt == 'mp4' and not bluray_selected_subtitle and not burn_dvd_subtitle:
                 cmd += ['-c:s', 'mov_text']
-            elif subtitle_item and not burn_bluray_subtitle:
+            elif subtitle_item and not burn_bluray_subtitle and not burn_dvd_subtitle:
                 cmd += ['-c:s', 'copy']
         safe_name = re.sub(r'[^A-Za-z0-9._-]+', '_', track.get('title', 'Video')).strip('_') or 'Video'
         suffix = '_TEST_1_MINUTE' if test_clip else ''
@@ -1332,221 +1352,73 @@ class LunaVideoStudio(Gtk.Application):
         self.progress.set_fraction(0); self.progress.set_text('0 %')
         if burn_bluray_subtitle:
             self.status_label.set_text(f'Blu-ray-PGS wird direkt ins {fmt.upper()}-Bild eingebrannt …')
+        elif burn_dvd_subtitle:
+            self.status_label.set_text('DVD-Untertitel werden mit FFmpeg direkt ins MP4-Bild eingebrannt …')
         else:
-            if dvd_mplayer_pipeline and test_clip:
-                status_text = 'DVD-Testclip: MPlayer liest die DVD, FFmpeg erstellt den Testclip …'
-            elif dvd_mplayer_pipeline:
-                status_text = 'DVD wird mit MPlayer ausgelesen; FFmpeg erstellt die vollständige Videodatei …'
-            elif test_clip:
+            if test_clip:
                 status_text = '1-Minuten-Testclip läuft. FFmpeg verarbeitet den Filmausschnitt …'
             else:
                 status_text = 'Rippen läuft. FFmpeg verarbeitet den Film …'
             self.status_label.set_text(status_text)
-        subtitle_sid = None
-        if dvd_mplayer_pipeline and subtitle_item:
-            # Use the explicitly parsed lsdvd subtitle ordinal for MPlayer -sid.
-            # The displayed MPEG-PS SPU ID (often 0x20, 0x21, ...) is not the
-            # same field and should never be guessed from the label/index string.
-            try:
-                subtitle_sid = int(subtitle_item['sid'])
-            except (KeyError, ValueError, TypeError):
-                subtitle_sid = None
         # Auto-eject is opt-in after successful full rip OR successful 1-minute test.
         eject_candidate = self.source_path if self.source_path and self.source_path.startswith('/dev/') else self.selected_device()
         eject_device = eject_candidate if self.auto_eject_check.get_active() and eject_candidate and eject_candidate.startswith('/dev/') else None
-        worker_mode = {'dvd_mplayer_pipeline': dvd_mplayer_pipeline, 'is_dvd_full_rip': bool(track.get('dvd_title') and not is_bluray_source and not test_clip), 'limit_to_minute': bool(test_clip), 'seek_seconds': max(0, int(duration / 2 - 30)), 'audio_index': (audio_item or {}).get('index', '0x80'), 'subtitle_sid': subtitle_sid, 'subtitle_language': (subtitle_item or {}).get('language', ''), 'dvd_title': track.get('dvd_title', 1), 'dvd_device': source if source.startswith('/dev/') else (self.selected_device() or '/dev/sr0'), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
+        worker_mode = {'is_dvd_full_rip': bool(track.get('dvd_title') and not is_bluray_source and not test_clip), 'limit_to_minute': bool(test_clip), 'auto_eject_device': eject_device, 'duration_seconds': duration, 'normalize_audio': normalize_audio}
         self.rip_thread = threading.Thread(target=self._encoding_worker, args=(cmd, output, worker_mode), daemon=True)
         self.rip_thread.start()
 
     def _encoding_worker(self, cmd, output, worker_mode=None):
         worker_mode = worker_mode or {}
-        temp_files = []
         try:
-            if worker_mode.get('dvd_mplayer_pipeline'):
-                # DVD VOB files may remain CSS-encrypted when FFmpeg opens them
-                # directly. MPlayer uses DVD navigation/decryption, then FFmpeg
-                # encodes the resulting short video/audio streams to MP4.
-                cache_dir = os.path.join(os.path.expanduser('~'), '.cache', 'luna-video-studio', 'dvdtest')
-                os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-                base = os.path.join(cache_dir, f"luna_video_studio_dvdtest_{os.getpid()}")
-                video_file = base + '.y4m'
-                audio_file = base + '.wav'
-                temp_files = [video_file, audio_file]
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', bufsize=1, universal_newlines=True, start_new_session=True)
+            self.current_process = process
+            stderr_chunks = []
+            # FFmpeg emits progress records on stdout when -progress pipe:1 is set.
+            # Drain stderr concurrently so a full pipe cannot stall the encoder.
+            def drain_stderr():
                 try:
-                    audio_index = int(str(worker_mode.get('audio_index', '0x80')), 0)
-                except (TypeError, ValueError):
-                    audio_index = 128
-                seek_seconds = int(worker_mode.get('seek_seconds', 0))
-                dvd_device = str(worker_mode.get('dvd_device') or '/dev/sr0')
-                dvd_title = worker_mode.get('dvd_title') or 1
-                mplayer_cmd = ['mplayer', '-really-quiet', '-dvd-device', dvd_device, 'dvd://' + str(dvd_title)]
-                selected_sid = worker_mode.get('subtitle_sid')
-                selected_language = normalize_language_code(worker_mode.get('subtitle_language', ''))
-                if selected_sid is None:
-                    mplayer_cmd += ['-nosub', '-noautosub']
-                else:
-                    # Do not trust lsdvd's ordinal alone: title/stream ordering can differ
-                    # between DVD parsers. Ask MPlayer for its own SID-to-language map,
-                    # then choose the matching SID. If the selected language cannot be
-                    # verified, stop instead of silently burning a different language.
-                    sid_languages, identify_output = probe_mplayer_dvd_subtitles(dvd_device, dvd_title)
-                    requested_sid = int(selected_sid) if selected_sid is not None else None
-                    actual_language = sid_languages.get(requested_sid) if requested_sid is not None else None
-                    resolved_sid = requested_sid
-                    # lsdvd and MPlayer can number DVD subpicture streams differently.
-                    # If the proposed SID is absent or reports another language, resolve
-                    # against MPlayer's own SID map. Only auto-resolve when exactly one
-                    # SID matches the selected language; if several match, stop rather
-                    # than risk burning a forced/SDH/commentary track by mistake.
-                    candidates = [sid for sid, lang in sid_languages.items()
-                                  if selected_language and lang == selected_language]
-                    if requested_sid is None or actual_language != selected_language:
-                        # Compatibility fallback used in 1.3.54: MPlayer and lsdvd
-                        # do not always expose the same SID numbering. If the selected
-                        # SID does not match the chosen language, use MPlayer's first
-                        # SID that reports the requested language. This works across
-                        # discs whose stream IDs/ordinals differ between parsers.
-                        # If there is no language match at all, fail safely.
-                        if candidates:
-                            resolved_sid = candidates[0]
-                        else:
-                            wanted = worker_mode.get('subtitle_language', '') or 'ausgewählte Sprache'
-                            actual = actual_language or 'unbekannt'
-                            raise RuntimeError(
-                                f'Die ausgewählte DVD-Untertitelspur (angeforderte SID {selected_sid if selected_sid is not None else "unbekannt"}, '
-                                f'Sprache {wanted}) konnte nicht zugeordnet werden. '
-                                f'MPlayer meldet für diese SID: {actual}; passende SIDs: keine. '
-                                'Der Vorgang wurde gestoppt, damit keine falschen Untertitel eingebrannt werden. '
-                                'Bitte die DVD erneut einlesen.'
-                            )
-                    mplayer_cmd += ['-sid', str(resolved_sid)]
-                if worker_mode.get('limit_to_minute'):
-                    mplayer_cmd += ['-ss', str(seek_seconds), '-endpos', '60']
-                mplayer_cmd += [
-                    '-aid', str(audio_index),
-                    '-vf', 'scale=720:576', '-vo', f'yuv4mpeg:file={video_file}',
-                    '-ao', f'pcm:waveheader:file={audio_file}',
-                ]
-                mp = subprocess.Popen(mplayer_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', start_new_session=True)
-                self.current_process = mp
-                GLib.idle_add(self._start_mplayer_progress)
-                mp_out, mp_err = mp.communicate()
-                GLib.idle_add(self._stop_mplayer_progress)
-                if self.cancel_requested:
-                    raise RuntimeError('Rippen wurde vom Benutzer abgebrochen.')
-                if mp.returncode not in (0, 1) or not os.path.exists(video_file) or os.path.getsize(video_file) < 1024:
-                    details = (mp_err or mp_out or 'MPlayer konnte keine DVD-Bilder lesen.').strip().splitlines()
-                    raise RuntimeError('DVD-Auslesen mit MPlayer fehlgeschlagen: ' + (details[-1] if details else 'unbekannter Fehler'))
-                GLib.idle_add(self._set_rip_stage_status, 'DVD eingelesen. FFmpeg erstellt die Videodatei …')
-                ffmpeg_cmd = [
-                    'ffmpeg', '-hide_banner', '-nostats', '-stats_period', '0.5',
-                    '-progress', 'pipe:1', '-y', '-i', video_file, '-i', audio_file,
-                    '-map', '0:v:0', '-map', '1:a:0?',
-                    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-                    '-c:a', 'aac',
-                ]
-                if worker_mode.get('normalize_audio', True):
-                    ffmpeg_cmd += ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11']
-                ffmpeg_cmd += ['-pix_fmt', 'yuv420p', '-sn', '-movflags', '+faststart']
-                is_test = bool(worker_mode.get('limit_to_minute'))
-                if is_test:
-                    ffmpeg_cmd += ['-t', '60']
-                ffmpeg_cmd.append(output)
-                process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', bufsize=1, universal_newlines=True, start_new_session=True)
-                self.current_process = process
-                stderr_chunks = []
-                def drain_dvd_ffmpeg_stderr():
+                    for err_line in process.stderr:
+                        stderr_chunks.append(err_line)
+                except (OSError, ValueError):
+                    pass
+            stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
+            stderr_thread.start()
+            current_out_time = 0.0
+            total_duration = float(worker_mode.get('duration_seconds') or 0)
+            progress_values = {}
+            for progress_line in process.stdout:
+                line = progress_line.strip()
+                if '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                progress_values[key] = value
+                # FFmpeg versions vary in how reliably they populate out_time_ms;
+                # prefer out_time (HH:MM:SS.microseconds) and fall back to out_time_us/ms.
+                if key == 'out_time':
                     try:
-                        for err_line in process.stderr:
-                            stderr_chunks.append(err_line)
-                    except (OSError, ValueError):
+                        hh, mm, ss = value.split(':')
+                        current_out_time = max(0.0, int(hh) * 3600 + int(mm) * 60 + float(ss))
+                    except (ValueError, TypeError):
                         pass
-                stderr_thread = threading.Thread(target=drain_dvd_ffmpeg_stderr, daemon=True)
-                stderr_thread.start()
-                total_duration = 60.0 if is_test else float(worker_mode.get('duration_seconds') or 0)
-                current_out_time = 0.0
-                progress_values = {}
-                for progress_line in process.stdout:
-                    line = progress_line.strip()
-                    if '=' not in line:
-                        continue
-                    key, value = line.split('=', 1)
-                    progress_values[key] = value
-                    if key == 'out_time':
-                        try:
-                            hh, mm, ss = value.split(':')
-                            current_out_time = max(0.0, int(hh) * 3600 + int(mm) * 60 + float(ss))
-                        except (ValueError, TypeError):
-                            pass
-                    elif key in ('out_time_us', 'out_time_ms') and not progress_values.get('out_time'):
-                        try:
-                            current_out_time = max(0.0, int(value) / 1_000_000.0)
-                        except (ValueError, TypeError):
-                            pass
-                    if key == 'progress':
-                        if value.strip().lower() == 'end':
-                            # FFmpeg explicitly says it has finished writing the output.
-                            # Reflect that immediately; the worker still waits for process exit
-                            # and validates the output below before declaring success.
-                            GLib.idle_add(self._encoding_progress, 1.0, current_out_time, total_duration)
-                        elif total_duration > 0:
-                            fraction = min(0.99, current_out_time / total_duration)
-                            GLib.idle_add(self._encoding_progress, fraction, current_out_time, total_duration)
-                        progress_values.clear()
-                process.wait()
-                stderr_thread.join(timeout=2)
-                stderr = ''.join(stderr_chunks)
-                returncode = process.returncode
-            else:
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors='replace', bufsize=1, universal_newlines=True, start_new_session=True)
-                self.current_process = process
-                stderr_chunks = []
-                # FFmpeg emits progress records on stdout when -progress pipe:1 is set.
-                # Drain stderr concurrently so a full pipe cannot stall the encoder.
-                def drain_stderr():
+                elif key in ('out_time_us', 'out_time_ms') and not progress_values.get('out_time'):
                     try:
-                        for err_line in process.stderr:
-                            stderr_chunks.append(err_line)
-                    except (OSError, ValueError):
+                        current_out_time = max(0.0, int(value) / 1_000_000.0)
+                    except (ValueError, TypeError):
                         pass
-                stderr_thread = threading.Thread(target=drain_stderr, daemon=True)
-                stderr_thread.start()
-                current_out_time = 0.0
-                total_duration = float(worker_mode.get('duration_seconds') or 0)
-                progress_values = {}
-                for progress_line in process.stdout:
-                    line = progress_line.strip()
-                    if '=' not in line:
-                        continue
-                    key, value = line.split('=', 1)
-                    progress_values[key] = value
-                    # FFmpeg versions vary in how reliably they populate out_time_ms;
-                    # prefer out_time (HH:MM:SS.microseconds) and fall back to out_time_us/ms.
-                    if key == 'out_time':
-                        try:
-                            hh, mm, ss = value.split(':')
-                            current_out_time = max(0.0, int(hh) * 3600 + int(mm) * 60 + float(ss))
-                        except (ValueError, TypeError):
-                            pass
-                    elif key in ('out_time_us', 'out_time_ms') and not progress_values.get('out_time'):
-                        try:
-                            current_out_time = max(0.0, int(value) / 1_000_000.0)
-                        except (ValueError, TypeError):
-                            pass
-                    if key == 'progress':
-                        if value.strip().lower() == 'end':
-                            # FFmpeg explicitly says it has finished writing the output.
-                            # Reflect that immediately; the worker still waits for process exit
-                            # and validates the output below before declaring success.
-                            GLib.idle_add(self._encoding_progress, 1.0, current_out_time, total_duration)
-                        elif total_duration > 0:
-                            fraction = min(0.99, current_out_time / total_duration)
-                            GLib.idle_add(self._encoding_progress, fraction, current_out_time, total_duration)
-                        progress_values.clear()
-                process.wait()
-                stderr_thread.join(timeout=2)
-                stderr = ''.join(stderr_chunks)
-                returncode = process.returncode
+                if key == 'progress':
+                    if value.strip().lower() == 'end':
+                        # FFmpeg explicitly says it has finished writing the output.
+                        # Reflect that immediately; the worker still waits for process exit
+                        # and validates the output below before declaring success.
+                        GLib.idle_add(self._encoding_progress, 1.0, current_out_time, total_duration)
+                    elif total_duration > 0:
+                        fraction = min(0.99, current_out_time / total_duration)
+                        GLib.idle_add(self._encoding_progress, fraction, current_out_time, total_duration)
+                    progress_values.clear()
+            process.wait()
+            stderr_thread.join(timeout=2)
+            stderr = ''.join(stderr_chunks)
+            returncode = process.returncode
             if self.cancel_requested:
                 message = 'Rippen wurde abgebrochen. Eine unvollständige Ausgabedatei kann vorhanden sein.'
                 fraction = 0.0
@@ -1649,35 +1521,7 @@ class LunaVideoStudio(Gtk.Application):
         except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
             message = str(exc) if isinstance(exc, RuntimeError) else f'Videoverarbeitung fehlgeschlagen: {exc}'
             fraction = 0.0
-        finally:
-            for path in temp_files:
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
         GLib.idle_add(self._encoding_finished, message, fraction)
-
-    def _start_mplayer_progress(self):
-        # MPlayer writes temporary YUV/audio files and has no FFmpeg-style
-        # progress protocol. Pulse the bar while that read is in progress.
-        self.progress.set_fraction(0.0)
-        self.progress.set_text('DVD wird mit MPlayer ausgelesen …')
-        self.status_label.set_text('DVD wird mit MPlayer ausgelesen; danach zeigt FFmpeg den Prozentfortschritt …')
-        self._mplayer_pulse_source = GLib.timeout_add(120, self._mplayer_progress_pulse)
-        return GLib.SOURCE_REMOVE
-
-    def _mplayer_progress_pulse(self):
-        self.progress.pulse()
-        return GLib.SOURCE_CONTINUE
-
-    def _stop_mplayer_progress(self):
-        source_id = getattr(self, '_mplayer_pulse_source', 0)
-        if source_id:
-            GLib.source_remove(source_id)
-            self._mplayer_pulse_source = 0
-        self.progress.set_fraction(0.0)
-        self.progress.set_text('DVD eingelesen – Umwandlung startet …')
-        return GLib.SOURCE_REMOVE
 
     def _set_rip_stage_status(self, message):
         self.status_label.set_text(message)
