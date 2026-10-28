@@ -41,8 +41,6 @@ Die Oberfläche unterstützt Deutsch und Englisch. Die Sprache lässt sich oben 
 
 ## Installation: Debian-Paket
 
-```
-
 Installiere LunaVideoStudio:
 
 ```bash
