@@ -2,6 +2,10 @@
 
 LunaVideoStudio ist eine GTK4-Anwendung für Debian/Linux zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP3 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
 
+![LunaVideoStudio](lunavideostudio.png)
+
+[Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
+
 ## Funktionen
 
 - DVD- und Blu-ray-Medien sowie Titel analysieren
@@ -72,3 +76,5 @@ Die Benutzereinstellungen werden unter `~/.config/luna-video-studio/settings.jso
 - `src/luna_video_studio/main.py` – Anwendung
 - `packaging/` – Debian-Metadaten, Starter und Desktop-Datei
 - `CHANGELOG.md` – Versionsänderungen
+
+73 de DO2QG Andreas
