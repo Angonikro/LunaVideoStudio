@@ -2,7 +2,7 @@
 
 GTK4-Anwendung für Debian/Linux und Raspberry PI OS zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP4 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
 
-![LunaVideoStudio](lunavideostudio1.png)
+![LunaVideoStudio](lunavideostudio5.png)
 
 [Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
 
