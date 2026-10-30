@@ -2,7 +2,7 @@
 
 GTK4-Anwendung für Debian/Linux und Raspberry PI OS zum Analysieren und Umwandeln von DVD- und Blu-ray-Titeln in MP4 MKV AVI. Die Videoverarbeitung erfolgt mit FFmpeg.
 
-![LunaVideoStudio](lunavideostudio5.png)
+![LunaVideoStudio](lunavideostudio6.png)
 
 [Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
 
@@ -66,7 +66,7 @@ Wenn die automatische Auswurffunktion aktiviert ist, wird die Disc auch nach ein
 
 ## Zielordner pro Disc
 
-Der eingestellte Zielordner ist der Basisordner (zum Beispiel `~/Videos`). Nach erfolgreichem Einlesen wird im Feld automatisch ein Unterordner mit dem erkannten Disc-/Filmnamen angezeigt, zum Beispiel `~/Videos/COLLATERAL_BEAUTY`. In `~/.config/luna-video-studio/settings.json` bleibt nur der Basisordner gespeichert. Beim Einlesen der nächsten Disc wird der neue Titelordner relativ zum gleichen Basisordner angezeigt.
+Der eingestellte Zielordner ist der Basisordner (zum Beispiel `~/Videos`). Nach erfolgreichem Einlesen wird im Feld automatisch ein Unterordner mit dem erkannten Disc-/Filmnamen angezeigt, zum Beispiel `~/Videos/test1`. In `~/.config/luna-video-studio/settings.json` bleibt nur der Basisordner gespeichert. Beim Einlesen der nächsten Disc wird der neue Titelordner relativ zum gleichen Basisordner angezeigt.
 
 ## Installation: Debian-Paket
 
