@@ -6,6 +6,9 @@ GTK4-Anwendung für Debian/Linux und Raspberry PI OS zum Analysieren und Umwande
 
 [Github Seite](https://github.com/Angonikro/LunaVideoStudio/)
 
+**Rechtmäßige Nutzung:** 
+LunaVideoStudio dient zum Analysieren und Umwandeln von Videomaterial, auf das du rechtmäßig zugreifen darfst. Verwende das Programm nur im Einklang mit den geltenden Gesetzen und den Rechten der Rechteinhaber. Die Anwendung stellt selbst keine Entschlüsselungsschlüssel oder Kopierschutz-Umgehungsfunktionen bereit und ist nicht dafür bestimmt, technische Schutzmaßnahmen zu umgehen.
+
 ## Funktionen
 
 - Laufzeitanzeige während des Rippens und Anzeige der Gesamtdauer nach Abschluss (auch bei Abbruch/Fehler).
