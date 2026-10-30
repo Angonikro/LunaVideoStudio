@@ -135,7 +135,6 @@ Danach gegebenenfalls ab- und wieder anmelden. `pgsrip` ist ein zusätzliches We
 
 - Prüfe, ob im Untertitel-Dropdown tatsächlich eine Sprache und nicht „Aus – keine Untertitel“ ausgewählt ist.
 - Bei Fehlern notiere den letzten Fehlertext aus dem Statusbereich.
-- Verschlüsselte Discs können eine passende, rechtmäßig verfügbare AACS-Konfiguration voraussetzen.
 - Die Anwendung wurde in dieser Arbeitsumgebung nicht an einem physischen DVD-/Blu-ray-Laufwerk getestet. Bitte die neue Auswurffunktion zunächst mit einer entbehrlichen Disc testen.
 
 ## Projektstruktur
